@@ -1,0 +1,64 @@
+# TheHive Helm Values — Incident Response Platform
+# Chart: strangebee/thehive (https://strangebee.github.io/helm-charts/)
+#
+# Install:
+#   helm repo add strangebee https://strangebee.github.io/helm-charts/
+#   helm install thehive strangebee/thehive -n thehive -f helm-values.yaml
+
+# TheHive application config
+thehive:
+  # Resource limits — slim config
+  resources:
+    requests:
+      memory: "512Mi"
+      cpu: "250m"
+    limits:
+      memory: "1Gi"
+      cpu: "500m"
+
+  # Database backend — use shared OpenSearch
+  database:
+    provider: elasticsearch
+    elasticsearch:
+      url: "http://opensearch.shared.svc.cluster.local:9200"
+      # TheHive uses its own index prefix to avoid collision with Wazuh/OpenCTI
+      indexPrefix: "thehive"
+
+  # File storage — use shared MinIO (secret key from K8s Secret)
+  storage:
+    provider: s3
+    s3:
+      endpoint: "http://minio.shared.svc.cluster.local:9000"
+      bucket: "thehive-bucket"
+      accessKey: "minio-admin"
+      secretKeyFrom:
+        secretKeyRef:
+          name: soc-shared-secrets
+          key: minio-secret-key
+
+  # Cortex integration
+  cortex:
+    servers:
+      - name: "cortex-local"
+        url: "http://cortex.thehive.svc.cluster.local:9001"
+        # API key set via Kubernetes Secret
+        auth:
+          type: "bearer"
+
+  # Application config overrides — Play secret from K8s Secret
+  application:
+    secretFrom:
+      secretKeyRef:
+        name: soc-thehive-secrets
+        key: play-secret
+
+# Service configuration
+service:
+  type: ClusterIP
+  port: 9000
+
+# Persistent storage for TheHive data
+persistence:
+  enabled: true
+  size: "5Gi"
+  storageClass: "local-path"

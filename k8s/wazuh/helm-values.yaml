@@ -1,0 +1,71 @@
+# Wazuh Helm Chart Values — SIEM/XDR Platform
+# Chart: wazuh/wazuh (community Helm chart)
+#
+# Note: Wazuh's official Helm chart is community-maintained. If unavailable,
+# deploy using the raw manifests in manager/, indexer/, dashboard/ directories.
+#
+# Install:
+#   helm install wazuh ./k8s/wazuh/ -n wazuh -f helm-values.yaml
+#   OR use individual manifests: kubectl apply -f k8s/wazuh/ -n wazuh
+
+# --- Wazuh Manager ---
+manager:
+  replicas: 1
+  resources:
+    requests:
+      memory: "512Mi"
+      cpu: "250m"
+    limits:
+      memory: "1Gi"
+      cpu: "500m"
+  # Use external OpenSearch (shared namespace)
+  indexer:
+    url: "https://opensearch.shared.svc.cluster.local:9200"
+  # TheHive integration — forward high-severity alerts
+  integration:
+    thehive:
+      enabled: true
+      url: "http://thehive.thehive.svc.cluster.local:9000"
+      # API key set via Kubernetes Secret
+      alertLevel: 7  # Forward alerts at level 7 and above
+  # Persistent storage for rules, decoders, and agent keys
+  persistence:
+    enabled: true
+    size: "5Gi"
+    storageClass: "local-path"
+
+# --- Wazuh Dashboard ---
+dashboard:
+  replicas: 1
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "100m"
+    limits:
+      memory: "512Mi"
+      cpu: "250m"
+  # Point to shared OpenSearch
+  opensearch:
+    url: "https://opensearch.shared.svc.cluster.local:9200"
+
+# --- Wazuh Agent (DaemonSet) ---
+agent:
+  # DaemonSet runs one agent per k3s node
+  resources:
+    requests:
+      memory: "128Mi"
+      cpu: "100m"
+    limits:
+      memory: "384Mi"
+      cpu: "200m"
+  # Manager connection
+  manager:
+    host: "wazuh-manager.wazuh.svc.cluster.local"
+    port: 1514
+  # Monitoring modules
+  modules:
+    fileIntegrity: true       # FIM on critical paths
+    rootkitDetection: true    # Rootcheck
+    vulnerabilityScanner: true # CVE scanning
+    logCollector: true         # Syslog collection
+    securityConfigAssessment: true # CIS benchmarks

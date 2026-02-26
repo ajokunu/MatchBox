@@ -1,0 +1,61 @@
+# OpenCTI AlienVault OTX Connector
+# Imports threat indicators (IPs, domains, hashes, URLs) from OTX pulses
+# Schedule: Daily CronJob (nightly import)
+# Free tier: 10,000 requests/hour
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: opencti-connector-alienvault
+  namespace: opencti
+  labels:
+    app: opencti-connector
+    connector: alienvault-otx
+spec:
+  schedule: "0 2 * * *"  # Daily at 2 AM
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: alienvault-otx
+              image: opencti/connector-alienvault:6.9.5
+              resources:
+                requests:
+                  memory: "128Mi"
+                  cpu: "50m"
+                limits:
+                  memory: "256Mi"
+                  cpu: "200m"
+              env:
+                - name: OPENCTI_URL
+                  value: "http://opencti.opencti.svc.cluster.local:4000"
+                - name: OPENCTI_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: opencti-secrets
+                      key: admin-token
+                - name: CONNECTOR_ID
+                  value: "alienvault-otx-connector"
+                - name: CONNECTOR_TYPE
+                  value: "EXTERNAL_IMPORT"
+                - name: CONNECTOR_NAME
+                  value: "AlienVault OTX"
+                - name: CONNECTOR_SCOPE
+                  value: "alienvault"
+                - name: CONNECTOR_LOG_LEVEL
+                  value: "info"
+                - name: ALIENVAULT_BASE_URL
+                  value: "https://otx.alienvault.com"
+                - name: ALIENVAULT_API_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: opencti-secrets
+                      key: alienvault-api-key
+                - name: ALIENVAULT_TLP
+                  value: "White"
+                - name: ALIENVAULT_PULSE_START_TIMESTAMP
+                  value: "2024-01-01T00:00:00"
+                - name: ALIENVAULT_INTERVAL
+                  value: "1"  # days

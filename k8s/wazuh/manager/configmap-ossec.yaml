@@ -1,0 +1,118 @@
+# Wazuh Manager Configuration (ossec.conf)
+# Mounted as a ConfigMap into the Wazuh Manager pod
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: wazuh-manager-config
+  namespace: wazuh
+  labels:
+    app: wazuh-manager
+data:
+  ossec.conf: |
+    <ossec_config>
+
+      <!-- Global settings -->
+      <global>
+        <jsonout_output>yes</jsonout_output>
+        <alerts_log>yes</alerts_log>
+        <logall>no</logall>
+        <logall_json>no</logall_json>
+      </global>
+
+      <!-- Agent enrollment -->
+      <auth>
+        <disabled>no</disabled>
+        <port>1515</port>
+        <use_source_ip>no</use_source_ip>
+        <purge>yes</purge>
+      </auth>
+
+      <!-- Remote agent connection -->
+      <remote>
+        <connection>secure</connection>
+        <port>1514</port>
+        <protocol>tcp</protocol>
+      </remote>
+
+      <!-- OpenSearch output — shared cluster in 'shared' namespace -->
+      <indexer>
+        <enabled>yes</enabled>
+        <hosts>
+          <host>https://opensearch.shared.svc.cluster.local:9200</host>
+        </hosts>
+        <!-- SSL disabled for home lab (internal ClusterIP only) -->
+      </indexer>
+
+      <!-- TheHive integration — forward alerts level 7+ to TheHive -->
+      <!-- This triggers the custom-w2thive.py script for each matching alert -->
+      <integration>
+        <name>custom-w2thive</name>
+        <hook_url>http://thehive.thehive.svc.cluster.local:9000</hook_url>
+        <api_key>THEHIVE_API_KEY_PLACEHOLDER</api_key>
+        <level>7</level>
+        <alert_format>json</alert_format>
+      </integration>
+
+      <!-- File Integrity Monitoring -->
+      <syscheck>
+        <disabled>no</disabled>
+        <frequency>43200</frequency> <!-- Check every 12 hours -->
+        <scan_on_start>yes</scan_on_start>
+        <!-- Critical paths to monitor -->
+        <directories check_all="yes" realtime="yes">/etc,/usr/bin,/usr/sbin</directories>
+        <directories check_all="yes" realtime="yes">/bin,/sbin</directories>
+        <!-- Ignore noisy paths -->
+        <ignore>/etc/mtab</ignore>
+        <ignore>/etc/hosts.deny</ignore>
+        <ignore>/etc/mail/statistics</ignore>
+        <ignore>/etc/random-seed</ignore>
+        <ignore>/etc/adjtime</ignore>
+      </syscheck>
+
+      <!-- Rootkit detection -->
+      <rootcheck>
+        <disabled>no</disabled>
+        <check_files>yes</check_files>
+        <check_trojans>yes</check_trojans>
+        <check_dev>yes</check_dev>
+        <check_sys>yes</check_sys>
+        <check_pids>yes</check_pids>
+        <check_ports>yes</check_ports>
+        <check_if>yes</check_if>
+        <frequency>43200</frequency>
+      </rootcheck>
+
+      <!-- Vulnerability detection -->
+      <vulnerability-detection>
+        <enabled>yes</enabled>
+        <index-status>yes</index-status>
+        <feed-update-interval>60m</feed-update-interval>
+      </vulnerability-detection>
+
+      <!-- Security Configuration Assessment (CIS benchmarks) -->
+      <sca>
+        <enabled>yes</enabled>
+        <scan_on_start>yes</scan_on_start>
+        <interval>12h</interval>
+      </sca>
+
+      <!-- Log analysis — collect system logs -->
+      <localfile>
+        <log_format>syslog</log_format>
+        <location>/var/log/syslog</location>
+      </localfile>
+      <localfile>
+        <log_format>syslog</log_format>
+        <location>/var/log/auth.log</location>
+      </localfile>
+
+      <!-- Custom rules and decoders -->
+      <ruleset>
+        <decoder_dir>etc/decoders</decoder_dir>
+        <rule_dir>etc/rules</rule_dir>
+        <!-- Custom K8s rules -->
+        <rule_dir>etc/rules/custom</rule_dir>
+        <decoder_dir>etc/decoders/custom</decoder_dir>
+      </ruleset>
+
+    </ossec_config>

@@ -1,0 +1,50 @@
+# OpenCTI MITRE ATT&CK Connector
+# Imports the MITRE ATT&CK framework (techniques, tactics, groups, software)
+# Schedule: Weekly CronJob (data changes infrequently)
+# No API key required — pulls from public STIX repository
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: opencti-connector-mitre
+  namespace: opencti
+  labels:
+    app: opencti-connector
+    connector: mitre-attack
+spec:
+  schedule: "0 3 * * 0"  # Weekly: Sunday at 3 AM
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: mitre-attack
+              image: opencti/connector-mitre:6.9.5
+              resources:
+                requests:
+                  memory: "128Mi"
+                  cpu: "50m"
+                limits:
+                  memory: "256Mi"
+                  cpu: "200m"
+              env:
+                - name: OPENCTI_URL
+                  value: "http://opencti.opencti.svc.cluster.local:4000"
+                - name: OPENCTI_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: opencti-secrets
+                      key: admin-token
+                - name: CONNECTOR_ID
+                  value: "mitre-attack-connector"
+                - name: CONNECTOR_TYPE
+                  value: "EXTERNAL_IMPORT"
+                - name: CONNECTOR_NAME
+                  value: "MITRE ATT&CK"
+                - name: CONNECTOR_SCOPE
+                  value: "identity,attack-pattern,course-of-action,intrusion-set,campaign,malware,tool,report,vulnerability,external-reference-as-report"
+                - name: CONNECTOR_LOG_LEVEL
+                  value: "info"
+                - name: MITRE_ENTERPRISE_FILE_URL
+                  value: "https://raw.githubusercontent.com/mitre/cti/master/enterprise-attack/enterprise-attack.json"

@@ -1,0 +1,114 @@
+# Wazuh Manager — StatefulSet deployment
+# SIEM/XDR core: receives agent logs, evaluates rules, triggers alerts
+apiVersion: v1
+kind: Service
+metadata:
+  name: wazuh-manager
+  namespace: wazuh
+  labels:
+    app: wazuh-manager
+spec:
+  selector:
+    app: wazuh-manager
+  ports:
+    - name: agent-events
+      port: 1514
+      targetPort: 1514
+    - name: agent-registration
+      port: 1515
+      targetPort: 1515
+    - name: api
+      port: 55000
+      targetPort: 55000
+  clusterIP: None
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: wazuh-manager
+  namespace: wazuh
+  labels:
+    app: wazuh-manager
+spec:
+  serviceName: wazuh-manager
+  replicas: 1
+  selector:
+    matchLabels:
+      app: wazuh-manager
+  template:
+    metadata:
+      labels:
+        app: wazuh-manager
+    spec:
+      containers:
+        - name: wazuh-manager
+          image: wazuh/wazuh-manager:4.11.1
+          ports:
+            - containerPort: 1514
+              name: agent-events
+            - containerPort: 1515
+              name: agent-reg
+            - containerPort: 55000
+              name: api
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "250m"
+            limits:
+              memory: "1Gi"
+              cpu: "500m"
+          env:
+            - name: INDEXER_URL
+              value: "https://opensearch-cluster-master.shared.svc.cluster.local:9200"
+            - name: INDEXER_USERNAME
+              value: "admin"
+            - name: INDEXER_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: soc-shared-secrets
+                  key: opensearch-password
+                  optional: true
+            - name: FILEBEAT_SSL_VERIFICATION_MODE
+              value: "none"
+          volumeMounts:
+            - name: data
+              mountPath: /var/ossec/data
+            - name: config
+              mountPath: /var/ossec/etc/ossec.conf
+              subPath: ossec.conf
+            - name: custom-rules
+              mountPath: /var/ossec/etc/rules/custom
+            - name: custom-decoders
+              mountPath: /var/ossec/etc/decoders/custom
+          readinessProbe:
+            tcpSocket:
+              port: 1514
+            initialDelaySeconds: 45
+            periodSeconds: 15
+            timeoutSeconds: 5
+          livenessProbe:
+            tcpSocket:
+              port: 1514
+            initialDelaySeconds: 120
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 6
+      volumes:
+        - name: config
+          configMap:
+            name: wazuh-manager-config
+        - name: custom-rules
+          configMap:
+            name: wazuh-custom-rules
+        - name: custom-decoders
+          configMap:
+            name: wazuh-custom-decoders
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: "local-path"
+        resources:
+          requests:
+            storage: 5Gi

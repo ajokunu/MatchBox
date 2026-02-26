@@ -1,0 +1,158 @@
+# Traefik IngressRoutes for DonnieBot SOC
+# Exposes all SOC dashboards under soc.homelab.local with path-based routing
+#
+# Prerequisites:
+#   - Traefik installed (via helm, since we disabled k3s built-in)
+#   - Add to /etc/hosts: 127.0.0.1 soc.homelab.local
+#   - Self-signed TLS cert created (see below)
+#
+# Install Traefik:
+#   helm repo add traefik https://traefik.github.io/charts
+#   helm install traefik traefik/traefik -n kube-system \
+#     --set resources.requests.memory=64Mi \
+#     --set resources.limits.memory=128Mi
+#
+# Generate self-signed TLS cert:
+#   openssl req -x509 -nodes -days 3650 -newkey rsa:2048 \
+#     -keyout tls.key -out tls.crt \
+#     -subj "/CN=soc.homelab.local" \
+#     -addext "subjectAltName=DNS:soc.homelab.local"
+#   kubectl create secret tls soc-tls-cert \
+#     --cert=tls.crt --key=tls.key -n kube-system
+
+---
+# Default TLS certificate store — all IngressRoutes use this cert
+apiVersion: traefik.io/v1alpha1
+kind: TLSStore
+metadata:
+  name: default
+  namespace: kube-system
+spec:
+  defaultCertificate:
+    secretName: soc-tls-cert
+
+---
+# BasicAuth middleware — adds a password layer on top of each app's own auth
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: soc-basic-auth
+  namespace: kube-system
+spec:
+  basicAuth:
+    secret: soc-auth-secret
+    # Create secret: htpasswd -nb admin <password> | base64
+    # kubectl create secret generic soc-auth-secret --from-literal=users='admin:$apr1$...'
+
+---
+# Wazuh Dashboard — /wazuh
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: wazuh-dashboard
+  namespace: wazuh
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - match: Host(`soc.homelab.local`) && PathPrefix(`/wazuh`)
+      kind: Rule
+      services:
+        - name: wazuh-dashboard
+          port: 443
+          scheme: https
+      middlewares:
+        - name: soc-basic-auth
+          namespace: kube-system
+  tls:
+    secretName: soc-tls-cert
+    domains:
+      - main: soc.homelab.local
+
+---
+# TheHive — /thehive
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: thehive
+  namespace: thehive
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - match: Host(`soc.homelab.local`) && PathPrefix(`/thehive`)
+      kind: Rule
+      services:
+        - name: thehive
+          port: 9000
+      middlewares:
+        - name: soc-basic-auth
+          namespace: kube-system
+  tls:
+    secretName: soc-tls-cert
+
+---
+# Cortex — /cortex
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: cortex
+  namespace: thehive
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - match: Host(`soc.homelab.local`) && PathPrefix(`/cortex`)
+      kind: Rule
+      services:
+        - name: cortex
+          port: 9001
+      middlewares:
+        - name: soc-basic-auth
+          namespace: kube-system
+  tls:
+    secretName: soc-tls-cert
+
+---
+# OpenCTI — /opencti
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: opencti
+  namespace: opencti
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - match: Host(`soc.homelab.local`) && PathPrefix(`/opencti`)
+      kind: Rule
+      services:
+        - name: opencti
+          port: 4000
+      middlewares:
+        - name: soc-basic-auth
+          namespace: kube-system
+  tls:
+    secretName: soc-tls-cert
+
+---
+# Grafana — /grafana
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: grafana
+  namespace: monitoring
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - match: Host(`soc.homelab.local`) && PathPrefix(`/grafana`)
+      kind: Rule
+      services:
+        - name: monitoring-grafana
+          port: 3000
+      middlewares:
+        - name: soc-basic-auth
+          namespace: kube-system
+  tls:
+    secretName: soc-tls-cert

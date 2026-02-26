@@ -1,0 +1,89 @@
+# OpenCTI Helm Values — Cyber Threat Intelligence Platform
+# Chart: opencti/opencti (https://devops-ia.github.io/helm-opencti/)
+#
+# Install:
+#   helm repo add opencti https://devops-ia.github.io/helm-opencti/
+#   helm install opencti opencti/opencti -n opencti -f helm-values.yaml
+#
+# OpenCTI is the most resource-hungry component. On 16GB Mac Mini, we run
+# slim mode: 1 worker, connectors on-demand, strict memory limits.
+
+# --- OpenCTI Platform ---
+opencti:
+  replicaCount: 1
+  resources:
+    requests:
+      memory: "1Gi"
+      cpu: "250m"
+    limits:
+      memory: "1536Mi"  # 1.5GB limit
+      cpu: "500m"
+
+  # Application settings
+  env:
+    # Admin credentials — password from K8s Secret
+    OPENCTI_ADMIN_EMAIL: "admin@donniebot.local"
+    OPENCTI_ADMIN_TOKEN: ""  # Auto-generated, retrieve after first boot
+
+    # Shared infrastructure connections
+    ELASTICSEARCH__URL: "http://opensearch.shared.svc.cluster.local:9200"
+    REDIS__HOSTNAME: "redis-master.shared.svc.cluster.local"
+    REDIS__PORT: "6379"
+    RABBITMQ__HOSTNAME: "rabbitmq.shared.svc.cluster.local"
+    RABBITMQ__PORT: "5672"
+    RABBITMQ__USERNAME: "opencti"
+    MINIO__ENDPOINT: "minio.shared.svc.cluster.local"
+    MINIO__PORT: "9000"
+    MINIO__USE_SSL: "false"
+    MINIO__ACCESS_KEY: "minio-admin"
+    MINIO__BUCKET_NAME: "opencti-bucket"
+
+    # Performance tuning for slim config
+    PROVIDERS__LOCAL__STRATEGY: "LocalStrategy"
+
+  # Credentials from K8s Secrets (never hardcoded)
+  extraEnvs:
+    - name: OPENCTI_ADMIN_PASSWORD
+      valueFrom:
+        secretKeyRef:
+          name: soc-opencti-secrets
+          key: opencti-admin-password
+    - name: RABBITMQ__PASSWORD
+      valueFrom:
+        secretKeyRef:
+          name: soc-opencti-secrets
+          key: rabbitmq-password
+    - name: MINIO__SECRET_KEY
+      valueFrom:
+        secretKeyRef:
+          name: soc-shared-secrets
+          key: minio-secret-key
+    - name: APP__HEALTH_ACCESS_KEY
+      valueFrom:
+        secretKeyRef:
+          name: soc-opencti-secrets
+          key: health-access-key
+
+# --- Worker ---
+# Workers process ingestion tasks from the RabbitMQ queue
+# On slim config, run only 1 worker (default is 3)
+worker:
+  replicaCount: 1
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "100m"
+    limits:
+      memory: "512Mi"
+      cpu: "250m"
+
+# --- Service ---
+service:
+  type: ClusterIP
+  port: 4000
+
+# --- Persistence ---
+persistence:
+  enabled: true
+  size: "10Gi"
+  storageClass: "local-path"

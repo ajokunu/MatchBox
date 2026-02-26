@@ -1,0 +1,29 @@
+# Environment and secrets
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.crt
+
+# Node modules (MCP servers)
+node_modules/
+dist/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Lima VM state (not version controlled)
+*.qcow2
+*.img
+
+# Kubernetes generated files
+kubeconfig.yaml
+
+# Claude Code local state
+.claude/

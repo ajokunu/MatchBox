@@ -1,0 +1,133 @@
+# kube-prometheus-stack Helm Values — Monitoring for DonnieBot SOC
+# Chart: prometheus-community/kube-prometheus-stack
+#
+# Install:
+#   helm repo add prometheus-community https://prometheus-community.github.io/helm-charts/
+#   helm install monitoring prometheus-community/kube-prometheus-stack \
+#     -n monitoring -f kube-prometheus-values.yaml
+
+# --- Prometheus ---
+prometheus:
+  prometheusSpec:
+    # Resource limits — slim config
+    resources:
+      requests:
+        memory: "256Mi"
+        cpu: "100m"
+      limits:
+        memory: "384Mi"
+        cpu: "250m"
+    # Retention — 15 days (save disk)
+    retention: "15d"
+    retentionSize: "3GB"
+    # Storage
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: "local-path"
+          resources:
+            requests:
+              storage: "5Gi"
+    # Scrape all namespaces
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+
+# --- Grafana ---
+grafana:
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "100m"
+    limits:
+      memory: "384Mi"
+      cpu: "250m"
+  # Admin credentials — password from K8s Secret (never hardcoded)
+  adminUser: admin
+  admin:
+    existingSecret: soc-grafana-secrets
+    userKey: admin-user
+    passwordKey: admin-password
+  # Persistence
+  persistence:
+    enabled: true
+    size: "2Gi"
+    storageClassName: "local-path"
+  # Data sources — add OpenSearch for Wazuh dashboards
+  additionalDataSources:
+    - name: OpenSearch-Wazuh
+      type: elasticsearch
+      url: http://opensearch.shared.svc.cluster.local:9200
+      database: "wazuh-alerts-*"
+      jsonData:
+        timeField: "timestamp"
+        esVersion: "2.11.0"  # OpenSearch version
+        logMessageField: "full_log"
+        logLevelField: "rule.level"
+  # Pre-provision Wazuh community dashboards
+  dashboardProviders:
+    dashboardproviders.yaml:
+      apiVersion: 1
+      providers:
+        - name: "wazuh"
+          orgId: 1
+          folder: "Wazuh SOC"
+          type: file
+          disableDeletion: false
+          editable: true
+          options:
+            path: /var/lib/grafana/dashboards/wazuh
+  # Dashboard JSON ConfigMaps
+  dashboardsConfigMaps:
+    wazuh: "grafana-wazuh-dashboards"
+
+# --- Alertmanager ---
+alertmanager:
+  alertmanagerSpec:
+    resources:
+      requests:
+        memory: "64Mi"
+        cpu: "25m"
+      limits:
+        memory: "128Mi"
+        cpu: "50m"
+    storage:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: "local-path"
+          resources:
+            requests:
+              storage: "1Gi"
+
+# --- Disable components we don't need (save RAM) ---
+kubeStateMetrics:
+  resources:
+    requests:
+      memory: "64Mi"
+      cpu: "25m"
+    limits:
+      memory: "128Mi"
+      cpu: "100m"
+
+nodeExporter:
+  resources:
+    requests:
+      memory: "32Mi"
+      cpu: "25m"
+    limits:
+      memory: "64Mi"
+      cpu: "100m"
+
+# Disable default Kubernetes dashboards (we use custom SOC ones)
+defaultRules:
+  create: true
+  rules:
+    general: true
+    kubernetesSystem: true
+    node: true
+    # Disable unused rules to reduce Prometheus memory
+    alertmanager: false
+    configReloaders: false
+    etcd: false
+    kubeControllerManager: false
+    kubeScheduler: false
+    kubeProxy: false

@@ -1,0 +1,111 @@
+# TheHive 5 — Incident Response Platform
+# Raw K8s manifests (StrangeBee doesn't maintain a public Helm chart)
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: thehive
+  namespace: thehive
+  labels:
+    app.kubernetes.io/name: thehive
+    app.kubernetes.io/part-of: donniebot-soc
+spec:
+  selector:
+    app.kubernetes.io/name: thehive
+  ports:
+    - name: http
+      port: 9000
+      targetPort: 9000
+  clusterIP: None
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: thehive
+  namespace: thehive
+  labels:
+    app.kubernetes.io/name: thehive
+    app.kubernetes.io/part-of: donniebot-soc
+spec:
+  serviceName: thehive
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: thehive
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: thehive
+    spec:
+      containers:
+        - name: thehive
+          image: strangebee/thehive:5.4
+          ports:
+            - containerPort: 9000
+              name: http
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "250m"
+            limits:
+              memory: "1Gi"
+              cpu: "500m"
+          env:
+            # Database — shared OpenSearch
+            - name: TH_DB_PROVIDER
+              value: "elasticsearch"
+            - name: TH_DB_ES_URI
+              value: "https://opensearch-cluster-master.shared.svc.cluster.local:9200"
+            - name: TH_DB_ES_SSL_ENABLED
+              value: "true"
+            - name: TH_DB_ES_SSL_VERIFY
+              value: "false"
+            - name: TH_DB_ES_INDEX_PREFIX
+              value: "thehive"
+            # Storage — shared MinIO
+            - name: TH_STORAGE_PROVIDER
+              value: "s3"
+            - name: TH_STORAGE_S3_ENDPOINT
+              value: "http://minio.shared.svc.cluster.local:9000"
+            - name: TH_STORAGE_S3_BUCKET
+              value: "thehive-bucket"
+            - name: TH_STORAGE_S3_ACCESS_KEY
+              value: "minio-admin"
+            - name: TH_STORAGE_S3_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: soc-shared-secrets
+                  key: minio-root-password
+            # Cortex integration
+            - name: TH_CORTEX_URLS
+              value: "http://cortex.thehive.svc.cluster.local:9001"
+            # Play framework secret
+            - name: TH_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: soc-thehive-secrets
+                  key: play-secret
+          volumeMounts:
+            - name: data
+              mountPath: /opt/thp/thehive/data
+          readinessProbe:
+            httpGet:
+              port: 9000
+              path: /api/v1/status/public
+            initialDelaySeconds: 30
+            periodSeconds: 15
+          livenessProbe:
+            httpGet:
+              port: 9000
+              path: /api/v1/status/public
+            initialDelaySeconds: 60
+            periodSeconds: 30
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: "local-path"
+        resources:
+          requests:
+            storage: 5Gi
