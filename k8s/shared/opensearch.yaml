@@ -52,5 +52,5 @@ extraEnvs:
 # TheHive case data: no auto-delete
 extraConfig:
   opensearch.yml: |
-    cluster.name: donniebot-soc
+    cluster.name: matchbox-soc
     node.name: opensearch-0

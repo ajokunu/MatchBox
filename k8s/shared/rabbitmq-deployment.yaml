@@ -8,7 +8,7 @@ metadata:
   namespace: shared
   labels:
     app.kubernetes.io/name: rabbitmq
-    app.kubernetes.io/part-of: donniebot-soc
+    app.kubernetes.io/part-of: matchbox-soc
 spec:
   selector:
     app.kubernetes.io/name: rabbitmq
@@ -31,7 +31,7 @@ metadata:
   namespace: shared
   labels:
     app.kubernetes.io/name: rabbitmq
-    app.kubernetes.io/part-of: donniebot-soc
+    app.kubernetes.io/part-of: matchbox-soc
 spec:
   serviceName: rabbitmq
   replicas: 1
@@ -85,7 +85,7 @@ spec:
             - name: data
               mountPath: /var/lib/rabbitmq
             - name: config
-              mountPath: /etc/rabbitmq/conf.d/20-donniebot.conf
+              mountPath: /etc/rabbitmq/conf.d/20-matchbox.conf
               subPath: rabbitmq.conf
       volumes:
         - name: config

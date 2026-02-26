@@ -1,4 +1,4 @@
-# Traefik IngressRoutes for DonnieBot SOC
+# Traefik IngressRoutes for MatchBox SOC
 # Exposes all SOC dashboards under soc.homelab.local with path-based routing
 #
 # Prerequisites:

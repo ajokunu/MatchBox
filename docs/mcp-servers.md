@@ -153,7 +153,7 @@ OPENCTI_TOKEN=<from-k8s-secret>
 
 ## Registration
 
-In `/Users/donniebot/DonnieBot/SecurityCenter/.claude/settings.json`:
+In `.claude/settings.json`:
 ```json
 {
   "mcpServers": {

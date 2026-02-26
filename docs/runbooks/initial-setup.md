@@ -13,7 +13,7 @@ brew install lima kubectl helm
 
 ## Step 2: Start the Lima VM + k3s
 ```bash
-cd /Users/donniebot/DonnieBot/SecurityCenter
+cd MatchBox
 ./scripts/setup-lima.sh
 ```
 

@@ -1,5 +1,5 @@
 {
-  "name": "@donniebot/thehive-mcp",
+  "name": "@matchbox/thehive-mcp",
   "version": "1.0.0",
   "description": "MCP server for TheHive API — manage cases, observables, and analyzers from Claude Code",
   "type": "module",

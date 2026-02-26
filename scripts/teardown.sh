@@ -1,5 +1,5 @@
 #!/bin/bash
-# Teardown DonnieBot SOC stack
+# Teardown MatchBox SOC stack
 # Usage: ./scripts/teardown.sh [component|all|vm]
 #   component: shared | wazuh | thehive | opencti | monitoring | ingress
 #   all: remove all Helm releases and k8s resources (keep VM)
@@ -41,7 +41,7 @@ if [ "$COMPONENT" != "vm" ]; then
   fi
 fi
 
-echo "=== DonnieBot Security Center — Teardown ==="
+echo "=== MatchBox — Teardown ==="
 echo "Component: $COMPONENT"
 echo ""
 

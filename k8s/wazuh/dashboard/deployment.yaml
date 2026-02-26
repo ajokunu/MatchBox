@@ -69,7 +69,11 @@ spec:
             - name: API_USERNAME
               value: "wazuh-wui"
             - name: API_PASSWORD
-              value: "MyS3cr37P450r.*-"
+              valueFrom:
+                secretKeyRef:
+                  name: soc-wazuh-secrets
+                  key: wazuh-api-password
+                  optional: true
           volumeMounts:
             - name: certs
               mountPath: /etc/wazuh-dashboard/certs

@@ -27,3 +27,6 @@ kubeconfig.yaml
 
 # Claude Code local state
 .claude/
+
+# Secrets (use secrets.yaml.example as template)
+k8s/shared/secrets.yaml

@@ -1,4 +1,4 @@
-# Lima VM Definition for DonnieBot Security Center
+# Lima VM Definition for MatchBox
 # Runs k3s Kubernetes inside a lightweight Linux VM on macOS (Apple Silicon)
 #
 # Usage:
@@ -26,11 +26,8 @@ rosetta:
 
 # Mount the k8s manifests directory into the VM for easy access
 mounts:
-  - location: "/Users/donniebot/DonnieBot/SecurityCenter"
-    mountPoint: "/home/donniebot.linux/SecurityCenter"
-    writable: false
-  - location: "~"
-    mountPoint: "/home/donniebot.linux/host-home"
+  - location: "~/MatchBox"
+    mountPoint: "/home/{{.User}}/SecurityCenter"
     writable: false
 
 # Port forwarding — expose k3s API and service ports to macOS host
@@ -103,11 +100,11 @@ provision:
       curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
 
       # --- Export kubeconfig for Lima host access ---
-      mkdir -p /home/donniebot.linux/.kube
-      cp /etc/rancher/k3s/k3s.yaml /home/donniebot.linux/.kube/config
+      mkdir -p /home/{{.User}}/.kube
+      cp /etc/rancher/k3s/k3s.yaml /home/{{.User}}/.kube/config
       # Replace 127.0.0.1 with 0.0.0.0 so it works from macOS via port forward
-      sed -i 's/127.0.0.1/0.0.0.0/g' /home/donniebot.linux/.kube/config
-      chown -R $(id -u donniebot.linux):$(id -g donniebot.linux) /home/donniebot.linux/.kube
+      sed -i 's/127.0.0.1/0.0.0.0/g' /home/{{.User}}/.kube/config
+      chown -R $(id -u {{.User}}):$(id -g {{.User}}) /home/{{.User}}/.kube
 
       # --- Install NFS server packages (for Cortex shared filesystem) ---
       apt-get update && apt-get install -y nfs-kernel-server

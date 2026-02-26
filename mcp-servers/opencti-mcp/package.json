@@ -1,5 +1,5 @@
 {
-  "name": "@donniebot/opencti-mcp",
+  "name": "@matchbox/opencti-mcp",
   "version": "1.0.0",
   "description": "MCP server for OpenCTI GraphQL API — search threat intel, indicators, and attack patterns from Claude Code",
   "type": "module",
