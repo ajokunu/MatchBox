@@ -1,64 +1,60 @@
 # Changelog
 
-All notable changes to the DonnieBot Security Center are documented here.
+All notable changes to MatchBox are documented here.
 
-## [Unreleased]
+## [1.0.0] — 2026-02-26
 
-### 2026-02-26 — Phase 2: Hardening, Version Updates & Dashboard Integration
+### Initial Release
 
-#### Security Hardening (43 issues fixed)
-- Created `k8s/shared/secrets.yaml` — centralized K8s Secrets template for all credentials
-- Removed all hardcoded passwords from: opensearch.yaml, rabbitmq.yaml, minio.yaml, redis.yaml, opencti/helm-values.yaml, thehive/helm-values.yaml, kube-prometheus-values.yaml
-- Enabled OpenSearch security (was disabled), added internal user auth via Secret
-- Enabled Redis authentication with Secret reference
-- Configured TLS on all Traefik IngressRoutes with self-signed cert (soc-tls-cert)
-- Added TLSStore default cert resource to traefik-routes.yaml
-- Fixed NFS server: `no_root_squash` -> `root_squash`
-- Added PVC create/patch/delete verbs to Cortex RBAC
-- Hardened w2thive.py with try/except error handling, logging, timeout/connection error handling
-- Fixed decoder regex bug: `(\.+)` -> `(.+)` in containerd and k3s decoders
-- Increased resource limits: agent 256Mi->384Mi, Cortex jobs 256Mi->512Mi
+A production-grade home Security Operations Center running on a single Mac Mini M4 (16GB RAM) with k3s Kubernetes via Lima VM.
 
-#### Version Updates
-- Wazuh agent: 4.9.2 -> 4.14.3
-- OpenCTI connectors: `:latest` -> `6.9.5` (all 4 connectors pinned)
-- NFS server: `:latest` -> `2.2.1`
+#### Core Stack
+- **Wazuh 4.14.3** — SIEM/XDR with Manager, Dashboard, and Agent DaemonSet
+- **OpenCTI 6.9.5** — Threat intelligence platform with MITRE ATT&CK, AlienVault OTX, AbuseIPDB, VirusTotal connectors
+- **TheHive 5.4 + Cortex 3.1.8** — Incident response with automated analyzers (K8s Jobs)
+- **Prometheus + Grafana** — Full observability with custom Wazuh dashboards
+- **OpenSearch** — Shared search/index backend for all services
+- **Redis, RabbitMQ, MinIO, NFS** — Shared infrastructure layer
 
-#### MCP Server Hardening
-- Added 10-second AbortController request timeouts to all 3 servers
-- Added startup connectivity tests with stderr warnings
-- Improved error handling with graceful process.exit(1) on fatal errors
+#### Kubernetes Infrastructure
+- Lima VM definition (VZ framework, Rosetta 2, 10GB RAM, 4 CPUs, 120GB disk)
+- k3s with custom kubelet tuning (eviction thresholds, system-reserved)
+- 5 isolated namespaces: shared, wazuh, thehive, opencti, monitoring
+- Traefik ingress with TLS (self-signed cert) and BasicAuth middleware
+- Path-based routing under `soc.homelab.local`
 
-#### Script Hardening
-- deploy-stack.sh: Added kubectl/helm prerequisite check, cluster connectivity validation
-- teardown.sh: Added cluster connectivity check before operations
-- setup-lima.sh: Added Homebrew PATH detection for Apple Silicon
+#### Architecture & Security
+- Kubernetes-native secret management via `secretKeyRef` (template: `secrets.yaml.example`)
+- OpenSearch security plugin with internal user authentication
+- Redis authentication via Kubernetes Secrets
+- TLS on all Traefik IngressRoutes with self-signed certificates
+- NFS `root_squash` enforced for storage security
+- Cortex RBAC scoped to minimal permissions (create/manage Jobs only)
+- All container images pinned to specific version tags for reproducible deployments
 
-#### Dashboard Integration
-- Added "SOC" tab to DonnieBot Security Center dashboard (ServiceMonitor/public/index.html)
-- SOC tab includes: architecture diagram, component cards, resource budget, MCP tool table, port reference, quick start
-- Added "Blog" tab with Medium-style article about the home SOC project
-- Matching DonnieBot dark theme: custom styles for namespace badges, resource bars, code blocks, blog typography
+#### MCP Servers (Claude Code Integration)
+- `@matchbox/wazuh-mcp` — 7 tools: alerts, agents, vulnerabilities, rules, decoders
+- `@matchbox/thehive-mcp` — 8 tools: cases, observables, analyzers, alerts
+- `@matchbox/opencti-mcp` — 6 tools: indicators, reports, attack patterns, enrichment
+- 10-second request timeouts on all servers
+- Startup connectivity checks with stderr warnings
+- Built on `@modelcontextprotocol/sdk`
 
-### 2026-02-26 — Phase 1: Project Scaffolding & Documentation
-- Created project directory structure under `/Users/donniebot/DonnieBot/SecurityCenter/`
-- Added CLAUDE.md with project conventions, architecture overview, and common commands
-- Added CHANGELOG.md (this file) for tracking all changes
-- Added README.md with project overview and quick-start guide
-- Added docs/architecture.md with full architecture design and reasoning
-- Added docs/network-diagram.md with Mermaid data flow diagrams
-- Added docs/resource-requirements.md with slim config RAM/CPU budgets
-- Added docs/integrations.md with component connection details
-- Added docs/mcp-servers.md with MCP server design documentation
-- Added Lima VM definition (lima/k3s-soc.yaml)
-- Added Kubernetes namespace manifest (k8s/namespaces.yaml)
-- Added shared infrastructure manifests (OpenSearch, Redis, RabbitMQ, MinIO)
-- Added Wazuh Helm values and ConfigMaps (ossec.conf, rules, decoders)
-- Added TheHive/Cortex Helm values, RBAC, and analyzer configs
-- Added OpenCTI Helm values and connector configurations
-- Added monitoring Helm values (kube-prometheus-stack)
-- Added Traefik IngressRoute configuration
-- Added MCP server scaffolds (wazuh-mcp, thehive-mcp, opencti-mcp)
-- Added automation scripts (setup-lima, deploy-stack, teardown, test-flow)
-- Added operational runbooks (initial-setup, adding-agents, incident-response)
-- Initialized git repository
+#### Automation
+- `setup-lima.sh` — Bootstrap Lima VM + k3s + Helm repos
+- `deploy-stack.sh` — Deploy full stack or individual components
+- `teardown.sh` — Clean teardown with cluster validation
+- `test-flow.sh` — End-to-end validation (7 test sections, 20+ checks)
+
+#### Dashboard
+- Self-contained HTML dashboard (`public/index.html`)
+- 4 tabs: Overview, Architecture, Components, MCP Servers
+- Custom SVG icon system — zero external dependencies
+- Dark theme, fully offline-capable
+
+#### Documentation
+- Architecture design with reasoning for each technology choice
+- Network diagrams and port reference
+- Resource requirements and phased startup strategy
+- MCP server design docs with tool tables and usage examples
+- Operational runbooks: initial setup, adding agents, incident response

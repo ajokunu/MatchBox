@@ -1,12 +1,12 @@
 #!/bin/bash
-# Setup Lima VM with k3s for DonnieBot Security Center
+# Setup Lima VM with k3s for MatchBox
 # Usage: ./scripts/setup-lima.sh
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 
-echo "=== DonnieBot Security Center — Lima VM Setup ==="
+echo "=== MatchBox — Lima VM Setup ==="
 
 # Ensure Homebrew is in PATH (common issue on Apple Silicon)
 if [ -f /opt/homebrew/bin/brew ]; then

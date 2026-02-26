@@ -1,4 +1,4 @@
-# DonnieBot Security Center
+# MatchBox
 
 ## Project Overview
 Home SOC (Security Operations Center) running on lightweight Kubernetes (k3s) via Lima VM on Mac Mini M4 (16GB RAM). Integrates Wazuh (SIEM/XDR), OpenCTI (Threat Intelligence), TheHive+Cortex (Incident Response), and Grafana (Monitoring).
@@ -27,10 +27,10 @@ Mac Mini M4 with 16GB RAM. Slim configuration with phased startup:
 - MCP servers have 10s request timeouts and startup connectivity checks
 
 ## Dashboard Integration
-SOC content is integrated into the DonnieBot Security Center dashboard at `http://localhost:3099`:
+SOC content is integrated into the MatchBox dashboard at `http://localhost:3099`:
 - **SOC tab**: Architecture, components, resource budget, MCP tools, ports
 - **Blog tab**: Medium-style article about the project
-- Source: `/Users/donniebot/DonnieBot/ServiceMonitor/public/index.html`
+- Source: `../ServiceMonitor/public/index.html`
 
 ## Directory Structure
 ```

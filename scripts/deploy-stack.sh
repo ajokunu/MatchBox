@@ -1,5 +1,5 @@
 #!/bin/bash
-# Deploy the full DonnieBot SOC stack to k3s
+# Deploy the full MatchBox SOC stack to k3s
 # Usage: ./scripts/deploy-stack.sh [component]
 #   component: all | namespaces | shared | wazuh | thehive | opencti | monitoring | ingress
 set -euo pipefail
@@ -32,7 +32,7 @@ if ! kubectl cluster-info &>/dev/null; then
   exit 1
 fi
 
-echo "=== DonnieBot Security Center — Stack Deployment ==="
+echo "=== MatchBox — Stack Deployment ==="
 echo "Component: $COMPONENT"
 echo ""
 

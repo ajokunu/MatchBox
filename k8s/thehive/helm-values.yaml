@@ -30,7 +30,7 @@ thehive:
     s3:
       endpoint: "http://minio.shared.svc.cluster.local:9000"
       bucket: "thehive-bucket"
-      accessKey: "minio-admin"
+      accessKey: ""  # Overridden by soc-shared-secrets/minio-root-user
       secretKeyFrom:
         secretKeyRef:
           name: soc-shared-secrets

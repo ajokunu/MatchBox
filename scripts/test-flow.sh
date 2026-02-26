@@ -1,5 +1,5 @@
 #!/bin/bash
-# End-to-end test for DonnieBot Security Center
+# End-to-end test for MatchBox
 # Validates the full alert pipeline: Wazuh -> TheHive -> Cortex -> OpenCTI
 # Usage: ./scripts/test-flow.sh
 set -euo pipefail
@@ -33,7 +33,7 @@ skip() {
   ((SKIP++))
 }
 
-echo "=== DonnieBot Security Center — End-to-End Test ==="
+echo "=== MatchBox — End-to-End Test ==="
 echo ""
 
 # 1. Cluster Health

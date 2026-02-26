@@ -22,7 +22,7 @@ opencti:
   # Application settings
   env:
     # Admin credentials — password from K8s Secret
-    OPENCTI_ADMIN_EMAIL: "admin@donniebot.local"
+    OPENCTI_ADMIN_EMAIL: "admin@soc.local"
     OPENCTI_ADMIN_TOKEN: ""  # Auto-generated, retrieve after first boot
 
     # Shared infrastructure connections
@@ -35,7 +35,7 @@ opencti:
     MINIO__ENDPOINT: "minio.shared.svc.cluster.local"
     MINIO__PORT: "9000"
     MINIO__USE_SSL: "false"
-    MINIO__ACCESS_KEY: "minio-admin"
+    MINIO__ACCESS_KEY: ""  # Overridden by soc-shared-secrets/minio-root-user via extraEnvs
     MINIO__BUCKET_NAME: "opencti-bucket"
 
     # Performance tuning for slim config

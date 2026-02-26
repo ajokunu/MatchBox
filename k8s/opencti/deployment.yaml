@@ -8,7 +8,7 @@ metadata:
   namespace: opencti
   labels:
     app.kubernetes.io/name: opencti
-    app.kubernetes.io/part-of: donniebot-soc
+    app.kubernetes.io/part-of: matchbox-soc
 spec:
   selector:
     app.kubernetes.io/name: opencti
@@ -24,7 +24,7 @@ metadata:
   namespace: opencti
   labels:
     app.kubernetes.io/name: opencti
-    app.kubernetes.io/part-of: donniebot-soc
+    app.kubernetes.io/part-of: matchbox-soc
 spec:
   replicas: 1
   selector:
@@ -56,7 +56,7 @@ spec:
             - name: APP__BASE_URL
               value: "http://opencti.soc.homelab.local"
             - name: APP__ADMIN__EMAIL
-              value: "admin@donniebot.local"
+              value: "admin@soc.local"
             - name: APP__ADMIN__PASSWORD
               valueFrom:
                 secretKeyRef:
@@ -68,7 +68,10 @@ spec:
                   name: soc-opencti-secrets
                   key: admin-token
             - name: APP__HEALTH_ACCESS_KEY
-              value: "donniebot-health-key"
+              valueFrom:
+                secretKeyRef:
+                  name: soc-opencti-secrets
+                  key: health-access-key
             # OpenSearch (HTTPS with self-signed cert)
             - name: ELASTICSEARCH__URL
               value: "https://opensearch-cluster-master.shared.svc.cluster.local:9200"
@@ -113,7 +116,10 @@ spec:
             - name: MINIO__USE_SSL
               value: "false"
             - name: MINIO__ACCESS_KEY
-              value: "minio-admin"
+              valueFrom:
+                secretKeyRef:
+                  name: soc-shared-secrets
+                  key: minio-root-user
             - name: MINIO__SECRET_KEY
               valueFrom:
                 secretKeyRef:
@@ -126,13 +132,13 @@ spec:
           readinessProbe:
             httpGet:
               port: 4000
-              path: /health?health_access_key=donniebot-health-key
+              path: /health
             initialDelaySeconds: 60
             periodSeconds: 15
           livenessProbe:
             httpGet:
               port: 4000
-              path: /health?health_access_key=donniebot-health-key
+              path: /health
             initialDelaySeconds: 120
             periodSeconds: 30
 ---
@@ -144,7 +150,7 @@ metadata:
   namespace: opencti
   labels:
     app.kubernetes.io/name: opencti-worker
-    app.kubernetes.io/part-of: donniebot-soc
+    app.kubernetes.io/part-of: matchbox-soc
 spec:
   replicas: 1
   selector:

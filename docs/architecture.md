@@ -2,7 +2,7 @@
 
 ## Overview
 
-The DonnieBot Security Center is a home SOC built on a single Mac Mini M4 (16GB RAM) running k3s Kubernetes inside a Lima VM. It provides enterprise-grade security monitoring, threat intelligence, and incident response capabilities within home lab constraints.
+The MatchBox is a home SOC built on a single Mac Mini M4 (16GB RAM) running k3s Kubernetes inside a Lima VM. It provides enterprise-grade security monitoring, threat intelligence, and incident response capabilities within home lab constraints.
 
 ## Why This Stack?
 

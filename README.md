@@ -1,6 +1,5 @@
 # MatchBox
-<img width="1232" height="928" alt="Don_The_word_MatchBox_emboldened_across_the_top_of_the_page___e31dc2d0-5ba4-4d4c-b5df-69ab3a32a1a9_2" src="https://github.com/user-attachments/assets/3f7f8695-7578-489a-bbea-2b009b827544" />
-
+<img width="1232" height="928" alt="MatchBox" src="https://github.com/user-attachments/assets/3f7f8695-7578-489a-bbea-2b009b827544" />
 
 A professional-grade home SOC (Security Operations Center) running on lightweight Kubernetes, designed for the Mac Mini M4 (16GB RAM).
 
@@ -30,7 +29,7 @@ brew install lima kubectl helm
 
 ### 2. Start the Cluster
 ```bash
-cd /Users/donniebot/DonnieBot/SecurityCenter
+cd MatchBox
 ./scripts/setup-lima.sh
 ```
 
@@ -83,7 +82,7 @@ Three custom MCP servers let Claude Code interact with the SOC:
 
 ## Dashboard
 
-The SOC is integrated into the DonnieBot Security Center dashboard at `http://localhost:3099`:
+The SOC is integrated into the MatchBox dashboard at `http://localhost:3099`:
 - **SOC tab** — Architecture, components, resource budget, MCP tools, port reference
 - **Blog tab** — Medium-style article about building the home SOC
 

@@ -1,4 +1,4 @@
-# kube-prometheus-stack Helm Values — Monitoring for DonnieBot SOC
+# kube-prometheus-stack Helm Values — Monitoring for MatchBox SOC
 # Chart: prometheus-community/kube-prometheus-stack
 #
 # Install:

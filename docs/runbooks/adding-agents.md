@@ -1,7 +1,7 @@
 # Runbook: Adding Wazuh Agents
 
 ## Overview
-Wazuh agents collect logs and security data from monitored endpoints. The DonnieBot SOC supports two agent deployment models:
+Wazuh agents collect logs and security data from monitored endpoints. The MatchBox SOC supports two agent deployment models:
 
 1. **DaemonSet agents** (in-cluster) — already deployed, monitor k3s nodes
 2. **External agents** — monitor other devices on your home network
