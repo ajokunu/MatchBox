@@ -1,5 +1,8 @@
 # DonnieBot Security Center
 
+<img width="1232" height="928" alt="Don_The_word_MatchBox_emboldened_across_the_top_of_the_page___e31dc2d0-5ba4-4d4c-b5df-69ab3a32a1a9_2" src="https://github.com/user-attachments/assets/3f7f8695-7578-489a-bbea-2b009b827544" />
+
+
 A professional-grade home SOC (Security Operations Center) running on lightweight Kubernetes, designed for the Mac Mini M4 (16GB RAM).
 
 ## What's Inside
