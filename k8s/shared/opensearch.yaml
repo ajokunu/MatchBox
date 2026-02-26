@@ -1,0 +1,56 @@
+# OpenSearch Helm Values — Shared instance for Wazuh, OpenCTI, TheHive
+# Chart: opensearch/opensearch (https://opensearch-project.github.io/helm-charts/)
+#
+# Why shared? Running separate ES/OpenSearch instances per service would cost
+# 6-12GB RAM. A single shared instance with index-per-service isolation
+# uses only 2GB. Trade-off: shared failure domain (acceptable for home lab).
+#
+# Install:
+#   helm repo add opensearch https://opensearch-project.github.io/helm-charts/
+#   helm install opensearch opensearch/opensearch -n shared -f opensearch.yaml
+
+# Single-node mode (no replicas — home lab doesn't need HA)
+singleNode: true
+replicas: 1
+
+# Resource limits — slim config for 16GB Mac Mini
+resources:
+  requests:
+    memory: "1.5Gi"
+    cpu: "500m"
+  limits:
+    memory: "2Gi"
+    cpu: "1000m"
+
+# JVM heap — 1GB heap (half of 2GB container limit, OpenSearch best practice)
+opensearchJavaOpts: "-Xmx1g -Xms1g"
+
+# Persistent storage — 40GB for all indices
+persistence:
+  enabled: true
+  size: "40Gi"
+  storageClass: "local-path"  # k3s built-in provisioner
+
+# Security — enabled with internal users for service-to-service auth
+securityConfig:
+  enabled: true
+  config:
+    securityConfigSecret: ""  # Uses default internal_users.yml
+    dataComplete: false
+
+# Environment variables — credentials from K8s Secret
+extraEnvs:
+  - name: OPENSEARCH_INITIAL_ADMIN_PASSWORD
+    valueFrom:
+      secretKeyRef:
+        name: soc-shared-secrets
+        key: opensearch-password
+
+# Index lifecycle — auto-delete old indices to save disk
+# Wazuh alerts: 7-day retention
+# OpenCTI STIX data: 90-day retention
+# TheHive case data: no auto-delete
+extraConfig:
+  opensearch.yml: |
+    cluster.name: donniebot-soc
+    node.name: opensearch-0

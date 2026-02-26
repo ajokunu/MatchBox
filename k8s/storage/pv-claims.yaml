@@ -1,0 +1,33 @@
+# Shared PersistentVolumeClaims
+# These PVCs use k3s local-path-provisioner for automatic volume provisioning
+# on the single-node cluster. In a multi-node setup, replace with NFS or
+# a distributed storage class.
+---
+# Cortex shared data — NFS-backed PV for analyzer job I/O
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: cortex-shared-nfs
+spec:
+  capacity:
+    storage: 2Gi
+  accessModes:
+    - ReadWriteMany  # Multiple pods (Cortex + analyzer jobs) need simultaneous access
+  nfs:
+    server: nfs-server.shared.svc.cluster.local
+    path: "/exports/cortex"
+  persistentVolumeReclaimPolicy: Retain
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: cortex-shared-data
+  namespace: thehive
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: ""  # Use pre-provisioned NFS PV
+  volumeName: cortex-shared-nfs
+  resources:
+    requests:
+      storage: 2Gi

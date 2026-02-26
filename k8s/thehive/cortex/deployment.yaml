@@ -1,0 +1,87 @@
+# Cortex — Automated Analysis Engine for TheHive
+# Runs analyzers (VirusTotal, AbuseIPDB, GeoIP) as K8s Jobs
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cortex
+  namespace: thehive
+  labels:
+    app.kubernetes.io/name: cortex
+    app.kubernetes.io/part-of: donniebot-soc
+spec:
+  selector:
+    app.kubernetes.io/name: cortex
+  ports:
+    - name: http
+      port: 9001
+      targetPort: 9001
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: cortex
+  namespace: thehive
+  labels:
+    app.kubernetes.io/name: cortex
+    app.kubernetes.io/part-of: donniebot-soc
+spec:
+  serviceName: cortex
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: cortex
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: cortex
+    spec:
+      serviceAccountName: cortex-job-runner
+      containers:
+        - name: cortex
+          image: thehiveproject/cortex:3.1.8
+          ports:
+            - containerPort: 9001
+              name: http
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "250m"
+          env:
+            - name: es_uri
+              value: "http://opensearch-cluster-master.shared.svc.cluster.local:9200"
+            - name: es_index
+              value: "cortex"
+            - name: job_runner
+              value: "kubernetes"
+            - name: job_kubernetes_namespace
+              value: "thehive"
+            - name: job_kubernetes_service_account
+              value: "cortex-job-runner"
+          volumeMounts:
+            - name: data
+              mountPath: /opt/cortex/data
+          readinessProbe:
+            httpGet:
+              port: 9001
+              path: /api/status
+            initialDelaySeconds: 30
+            periodSeconds: 15
+          livenessProbe:
+            httpGet:
+              port: 9001
+              path: /api/status
+            initialDelaySeconds: 60
+            periodSeconds: 30
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: "local-path"
+        resources:
+          requests:
+            storage: 2Gi

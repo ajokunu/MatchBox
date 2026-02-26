@@ -1,0 +1,62 @@
+# OpenCTI VirusTotal Connector (Internal Enrichment)
+# Enriches existing observables with VirusTotal reputation data
+# Type: internal-enrichment (triggered on new observables, not scheduled)
+# Free tier: 500 requests/day
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: opencti-connector-virustotal
+  namespace: opencti
+  labels:
+    app: opencti-connector
+    connector: virustotal
+spec:
+  # replicas: 0 by default — scale to 1 when in investigation mode
+  # kubectl scale deployment opencti-connector-virustotal --replicas=1 -n opencti
+  replicas: 0
+  selector:
+    matchLabels:
+      app: opencti-connector-virustotal
+  template:
+    metadata:
+      labels:
+        app: opencti-connector-virustotal
+    spec:
+      containers:
+        - name: virustotal
+          image: opencti/connector-virustotal:6.9.5
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "50m"
+            limits:
+              memory: "256Mi"
+              cpu: "200m"
+          env:
+            - name: OPENCTI_URL
+              value: "http://opencti.opencti.svc.cluster.local:4000"
+            - name: OPENCTI_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: opencti-secrets
+                  key: admin-token
+            - name: CONNECTOR_ID
+              value: "virustotal-enrichment-connector"
+            - name: CONNECTOR_TYPE
+              value: "INTERNAL_ENRICHMENT"
+            - name: CONNECTOR_NAME
+              value: "VirusTotal"
+            - name: CONNECTOR_SCOPE
+              value: "StixFile,Artifact,IPv4-Addr,Domain-Name,Url"
+            - name: CONNECTOR_AUTO
+              value: "true"  # Auto-enrich new observables
+            - name: CONNECTOR_LOG_LEVEL
+              value: "info"
+            - name: VIRUSTOTAL_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: opencti-secrets
+                  key: virustotal-api-key
+            - name: VIRUSTOTAL_MAX_TLP
+              value: "TLP:AMBER"

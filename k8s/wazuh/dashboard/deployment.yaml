@@ -1,0 +1,97 @@
+# Wazuh Dashboard — Deployment
+# OpenSearch Dashboards fork with Wazuh plugin preinstalled
+apiVersion: v1
+kind: Service
+metadata:
+  name: wazuh-dashboard
+  namespace: wazuh
+  labels:
+    app: wazuh-dashboard
+spec:
+  selector:
+    app: wazuh-dashboard
+  ports:
+    - name: https
+      port: 5601
+      targetPort: 5601
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wazuh-dashboard
+  namespace: wazuh
+  labels:
+    app: wazuh-dashboard
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: wazuh-dashboard
+  template:
+    metadata:
+      labels:
+        app: wazuh-dashboard
+    spec:
+      containers:
+        - name: dashboard
+          image: wazuh/wazuh-dashboard:4.11.1
+          ports:
+            - containerPort: 5601
+              name: https
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "250m"
+          env:
+            - name: INDEXER_URL
+              value: "https://opensearch-cluster-master.shared.svc.cluster.local:9200"
+            - name: INDEXER_USERNAME
+              value: "admin"
+            - name: INDEXER_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: soc-shared-secrets
+                  key: opensearch-password
+                  optional: true
+            - name: WAZUH_API_URL
+              value: "https://wazuh-manager.wazuh.svc.cluster.local"
+            - name: DASHBOARD_USERNAME
+              value: "kibanaserver"
+            - name: DASHBOARD_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: soc-shared-secrets
+                  key: opensearch-password
+                  optional: true
+            - name: API_USERNAME
+              value: "wazuh-wui"
+            - name: API_PASSWORD
+              value: "MyS3cr37P450r.*-"
+          volumeMounts:
+            - name: certs
+              mountPath: /etc/wazuh-dashboard/certs
+              readOnly: true
+          readinessProbe:
+            httpGet:
+              port: 5601
+              path: /
+              scheme: HTTPS
+            initialDelaySeconds: 45
+            periodSeconds: 15
+            timeoutSeconds: 5
+          livenessProbe:
+            httpGet:
+              port: 5601
+              path: /
+              scheme: HTTPS
+            initialDelaySeconds: 120
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 6
+      volumes:
+        - name: certs
+          secret:
+            secretName: wazuh-dashboard-certs

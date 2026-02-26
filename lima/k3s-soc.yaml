@@ -1,0 +1,130 @@
+# Lima VM Definition for DonnieBot Security Center
+# Runs k3s Kubernetes inside a lightweight Linux VM on macOS (Apple Silicon)
+#
+# Usage:
+#   limactl start ./lima/k3s-soc.yaml
+#   export KUBECONFIG=$(limactl list k3s-soc --format '{{.Dir}}/copied-from-guest/kubeconfig.yaml')
+#   kubectl get nodes
+
+# VM image — Ubuntu 24.04 LTS (ARM64 for Apple Silicon)
+images:
+  - location: "https://cloud-images.ubuntu.com/releases/24.04/release/ubuntu-24.04-server-cloudimg-arm64.img"
+    arch: "aarch64"
+
+# Resource allocation — slim config for Mac Mini M4 (16GB total)
+# macOS needs ~4-5GB, Lima overhead ~500MB, leaves ~10GB for the VM
+cpus: 4
+memory: "10GiB"
+disk: "120GiB"
+
+# VZ framework — Apple's native virtualization, near-native performance on M-series
+vmType: "vz"
+# Rosetta 2 — enables running x86_64 container images on ARM transparently
+rosetta:
+  enabled: true
+  binfmt: true
+
+# Mount the k8s manifests directory into the VM for easy access
+mounts:
+  - location: "/Users/donniebot/DonnieBot/SecurityCenter"
+    mountPoint: "/home/donniebot.linux/SecurityCenter"
+    writable: false
+  - location: "~"
+    mountPoint: "/home/donniebot.linux/host-home"
+    writable: false
+
+# Port forwarding — expose k3s API and service ports to macOS host
+portForwards:
+  # k3s API server — for kubectl from macOS
+  - guestPort: 6443
+    hostPort: 6443
+    proto: tcp
+  # HTTP ingress (Traefik)
+  - guestPort: 80
+    hostPort: 80
+    proto: tcp
+  # HTTPS ingress (Traefik)
+  - guestPort: 443
+    hostPort: 443
+    proto: tcp
+  # Wazuh agent communication — for monitoring external hosts on LAN
+  - guestPort: 1514
+    hostPort: 1514
+    proto: tcp
+  # Wazuh agent registration
+  - guestPort: 1515
+    hostPort: 1515
+    proto: tcp
+  # Wazuh API (for MCP server on macOS)
+  - guestPort: 55000
+    hostPort: 55000
+    proto: tcp
+
+# Provisioning script — runs on first boot
+provision:
+  - mode: system
+    script: |
+      #!/bin/bash
+      set -eux
+
+      # --- Swap Configuration ---
+      # 4GB swap as safety net for memory pressure situations
+      if [ ! -f /swapfile ]; then
+        fallocate -l 4G /swapfile
+        chmod 600 /swapfile
+        mkswap /swapfile
+        swapon /swapfile
+        echo '/swapfile none swap sw 0 0' >> /etc/fstab
+      fi
+
+      # --- System Tuning ---
+      # Increase vm.max_map_count for OpenSearch (requires 262144+)
+      echo "vm.max_map_count=262144" >> /etc/sysctl.d/99-opensearch.conf
+      sysctl -w vm.max_map_count=262144
+
+      # Increase file descriptor limits for OpenSearch and Wazuh
+      echo "* soft nofile 65536" >> /etc/security/limits.conf
+      echo "* hard nofile 65536" >> /etc/security/limits.conf
+
+      # --- Install k3s ---
+      # --disable=traefik: We'll install our own Traefik with custom config
+      # --write-kubeconfig-mode=644: Allows non-root kubeconfig access
+      # --kubelet-arg: Set system-reserved to protect the node from OOM
+      curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="server \
+        --disable=traefik \
+        --write-kubeconfig-mode=644 \
+        --kubelet-arg=system-reserved=cpu=200m,memory=256Mi \
+        --kubelet-arg=eviction-hard=memory.available<200Mi \
+        --kubelet-arg=eviction-soft=memory.available<500Mi \
+        --kubelet-arg=eviction-soft-grace-period=memory.available=30s" \
+        sh -
+
+      # --- Install Helm ---
+      curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+
+      # --- Export kubeconfig for Lima host access ---
+      mkdir -p /home/donniebot.linux/.kube
+      cp /etc/rancher/k3s/k3s.yaml /home/donniebot.linux/.kube/config
+      # Replace 127.0.0.1 with 0.0.0.0 so it works from macOS via port forward
+      sed -i 's/127.0.0.1/0.0.0.0/g' /home/donniebot.linux/.kube/config
+      chown -R $(id -u donniebot.linux):$(id -g donniebot.linux) /home/donniebot.linux/.kube
+
+      # --- Install NFS server packages (for Cortex shared filesystem) ---
+      apt-get update && apt-get install -y nfs-kernel-server
+
+      # --- Wait for k3s to be ready ---
+      until kubectl --kubeconfig=/etc/rancher/k3s/k3s.yaml get nodes 2>/dev/null; do
+        echo "Waiting for k3s..."
+        sleep 5
+      done
+      echo "k3s is ready!"
+
+# Copy kubeconfig to host for kubectl access from macOS
+copyToHost:
+  - guest: "/etc/rancher/k3s/k3s.yaml"
+    host: "{{.Dir}}/copied-from-guest/kubeconfig.yaml"
+
+# DNS — resolve *.soc.homelab.local inside the VM
+dns:
+  - hosts:
+      soc.homelab.local: "127.0.0.1"

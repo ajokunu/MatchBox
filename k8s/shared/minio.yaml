@@ -1,0 +1,48 @@
+# MinIO Helm Values — S3-compatible object storage for OpenCTI and TheHive
+# Chart: minio/minio (https://charts.min.io/)
+#
+# Install:
+#   helm repo add minio https://charts.min.io/
+#   helm install minio minio/minio -n shared -f minio.yaml
+
+# Single-node mode (standalone)
+mode: standalone
+
+# Auth — credentials pulled from K8s Secret (see k8s/shared/secrets.yaml)
+existingSecret: soc-shared-secrets
+
+# Resource limits — slim config
+resources:
+  requests:
+    memory: "256Mi"
+    cpu: "100m"
+  limits:
+    memory: "512Mi"
+    cpu: "250m"
+
+# Persistent storage — 40GB for artifacts and threat intel files
+persistence:
+  enabled: true
+  size: "40Gi"
+  storageClass: "local-path"
+
+# Create default buckets on startup
+buckets:
+  - name: opencti-bucket
+    policy: none
+    purge: false
+  - name: thehive-bucket
+    policy: none
+    purge: false
+  - name: cortex-bucket
+    policy: none
+    purge: false
+
+# Disable console (saves RAM, we manage via CLI or API)
+console:
+  enabled: false
+
+# Metrics — enable for Prometheus
+metrics:
+  serviceMonitor:
+    enabled: true

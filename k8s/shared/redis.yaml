@@ -1,0 +1,44 @@
+# Redis Helm Values — Used by OpenCTI for caching and streaming
+# Chart: bitnami/redis (https://charts.bitnami.com/bitnami)
+#
+# Install:
+#   helm repo add bitnami https://charts.bitnami.com/bitnami
+#   helm install redis bitnami/redis -n shared -f redis.yaml
+
+# Standalone mode (no sentinel, no cluster — overkill for home lab)
+architecture: standalone
+
+# Auth — enabled with password from K8s Secret (defense in depth)
+auth:
+  enabled: true
+  existingSecret: soc-shared-secrets
+  existingSecretPasswordKey: redis-password
+
+# Resource limits — slim config
+master:
+  resources:
+    requests:
+      memory: "128Mi"
+      cpu: "50m"
+    limits:
+      memory: "256Mi"
+      cpu: "100m"
+  persistence:
+    enabled: true
+    size: "1Gi"
+    storageClass: "local-path"
+
+# Disable replicas (standalone mode)
+replica:
+  replicaCount: 0
+
+# Metrics — enable for Prometheus scraping
+metrics:
+  enabled: true
+  resources:
+    requests:
+      memory: "32Mi"
+      cpu: "10m"
+    limits:
+      memory: "64Mi"
+      cpu: "50m"

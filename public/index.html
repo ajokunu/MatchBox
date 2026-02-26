@@ -1,0 +1,840 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DonnieBot Security Center</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0f172a; color: #e2e8f0; min-height: 100vh;
+    }
+
+    /* -- Top bar ---------------------------------------------------- */
+    .topbar {
+      background: #1e293b; border-bottom: 1px solid #334155;
+      padding: 16px 24px; display: flex; align-items: center; gap: 16px;
+    }
+    .topbar h1 { font-size: 1.3rem; font-weight: 700; flex: 1; }
+    .topbar .version-pill {
+      padding: 4px 14px; border-radius: 9999px; font-size: 0.8rem; font-weight: 700;
+      background: #0c4a6e; color: #7dd3fc;
+    }
+
+    /* -- Tabs ------------------------------------------------------- */
+    .tabs {
+      display: flex; gap: 0; background: #1e293b; border-bottom: 1px solid #334155;
+      padding: 0 24px; max-width: 100%; overflow-x: auto;
+    }
+    .tab {
+      padding: 12px 20px; cursor: pointer; font-size: 0.85rem; font-weight: 500;
+      color: #64748b; border-bottom: 2px solid transparent; transition: all 0.15s;
+      user-select: none; white-space: nowrap;
+    }
+    .tab:hover { color: #94a3b8; }
+    .tab.active { color: #e2e8f0; border-bottom-color: #3b82f6; }
+    .tab-content { display: none; padding: 24px; max-width: 1200px; margin: 0 auto; }
+    .tab-content.active { display: block; }
+
+    /* -- Cards ------------------------------------------------------ */
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 16px; margin-bottom: 20px; }
+    .grid-wide { grid-template-columns: 1fr; }
+    .card {
+      background: #1e293b; border: 1px solid #334155; border-radius: 12px;
+      padding: 20px; transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .card:hover { border-color: #475569; box-shadow: 0 4px 20px rgba(0,0,0,0.2); }
+    .card.border-running { border-left: 3px solid #22c55e; }
+    .card.border-idle { border-left: 3px solid #eab308; }
+    .card.border-info { border-left: 3px solid #3b82f6; }
+    .card.border-warning { border-left: 3px solid #f97316; }
+    .card.border-purple { border-left: 3px solid #a855f7; }
+
+    .card-header { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+    .card-header .emoji { font-size: 1.4rem; }
+    .card-header .name { font-size: 1.05rem; font-weight: 600; flex: 1; }
+
+    /* -- Badges ----------------------------------------------------- */
+    .badge {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 3px 10px; border-radius: 9999px; font-size: 0.72rem;
+      font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;
+    }
+    .badge-dot { width: 7px; height: 7px; border-radius: 50%; }
+    .badge-running .badge-dot { background:#22c55e; box-shadow:0 0 6px #22c55e; }
+    .badge-running { background:#052e16; color:#86efac; }
+    .badge-ondemand { background:#422006; color:#fde047; }
+    .badge-scheduled { background:#1e1b4b; color:#a5b4fc; }
+    .badge-core { background:#0c4a6e; color:#7dd3fc; }
+    .badge-critical { background:#450a0a; color:#fca5a5; }
+    .badge-high { background:#431407; color:#fdba74; }
+    .badge-medium { background:#422006; color:#fde047; }
+    .badge-low { background:#0c4a6e; color:#7dd3fc; }
+
+    /* -- Info grid -------------------------------------------------- */
+    .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 16px; margin-bottom: 14px; }
+    .info-label { color:#64748b; font-size:0.68rem; text-transform:uppercase; letter-spacing:0.05em; margin-bottom:1px; }
+    .info-value { color:#e2e8f0; font-size:0.85rem; font-weight:500; }
+    .mono { font-family:'SF Mono','Fira Code',monospace; font-size:0.8rem; }
+    .desc { color:#94a3b8; font-size:0.82rem; margin-bottom:14px; line-height: 1.6; }
+    .desc-dim { color:#64748b; font-size:0.78rem; margin-bottom:14px; line-height: 1.5; }
+
+    /* -- Section headers -------------------------------------------- */
+    .section-title {
+      font-size: 1.1rem; font-weight: 700; margin-bottom: 16px;
+      padding-bottom: 8px; border-bottom: 1px solid #334155;
+    }
+    .section-title .accent { color: #3b82f6; }
+
+    /* -- Tables ----------------------------------------------------- */
+    .data-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; margin-bottom: 16px; }
+    .data-table th {
+      text-align: left; padding: 8px 12px; color: #64748b; font-size: 0.72rem;
+      text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 1px solid #334155;
+    }
+    .data-table td { padding: 8px 12px; border-bottom: 1px solid #1e293b; color: #e2e8f0; }
+    .data-table tr:hover td { background: rgba(59,130,246,0.05); }
+
+    /* -- Code blocks ------------------------------------------------ */
+    .code-block {
+      background: #0f172a; border: 1px solid #334155; border-radius: 8px;
+      padding: 14px; font-family: 'SF Mono','Fira Code',monospace; font-size: 0.78rem;
+      line-height: 1.6; overflow-x: auto; color: #94a3b8; margin-bottom: 16px;
+    }
+    .code-block .cmd { color: #7dd3fc; }
+    .code-block .comment { color: #475569; }
+    .code-block .string { color: #86efac; }
+
+    /* -- ASCII diagram --------------------------------------------- */
+    .ascii-diagram {
+      background: #0f172a; border: 1px solid #334155; border-radius: 8px;
+      padding: 20px; font-family: 'SF Mono','Fira Code',monospace; font-size: 0.72rem;
+      line-height: 1.5; overflow-x: auto; color: #7dd3fc; margin-bottom: 16px;
+      white-space: pre;
+    }
+
+    /* -- Resource bar ---------------------------------------------- */
+    .resource-bar { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+    .resource-bar .label { width: 90px; font-size: 0.75rem; color: #64748b; }
+    .resource-bar .bar-bg { flex: 1; height: 8px; background: #334155; border-radius: 4px; overflow: hidden; }
+    .resource-bar .bar-fill { height: 100%; border-radius: 4px; transition: width 0.3s; }
+    .resource-bar .val { width: 60px; text-align: right; font-size: 0.75rem; color: #94a3b8; }
+    .fill-green { background: #22c55e; }
+    .fill-yellow { background: #eab308; }
+    .fill-orange { background: #f97316; }
+    .fill-blue { background: #3b82f6; }
+
+    /* -- Blog styles ----------------------------------------------- */
+    .blog-post { max-width: 720px; margin: 0 auto; }
+    .blog-post h2 {
+      font-size: 2rem; font-weight: 800; line-height: 1.25;
+      margin-bottom: 8px; color: #f8fafc;
+    }
+    .blog-post .byline { color: #64748b; font-size: 0.85rem; margin-bottom: 32px; }
+    .blog-post .lead {
+      font-size: 1.15rem; color: #cbd5e1; line-height: 1.7;
+      margin-bottom: 24px; font-weight: 400;
+    }
+    .blog-post p {
+      font-size: 1rem; color: #94a3b8; line-height: 1.8; margin-bottom: 20px;
+    }
+    .blog-post h3 {
+      font-size: 1.3rem; font-weight: 700; color: #e2e8f0;
+      margin-top: 40px; margin-bottom: 12px;
+    }
+    .blog-post ul, .blog-post ol {
+      color: #94a3b8; font-size: 1rem; line-height: 1.8;
+      margin-bottom: 20px; padding-left: 24px;
+    }
+    .blog-post li { margin-bottom: 6px; }
+    .blog-post strong { color: #e2e8f0; }
+    .blog-post code {
+      background: #1e293b; padding: 2px 6px; border-radius: 4px;
+      font-family: 'SF Mono',monospace; font-size: 0.88em; color: #7dd3fc;
+    }
+    .blog-post blockquote {
+      border-left: 3px solid #3b82f6; padding: 12px 20px; margin: 24px 0;
+      background: rgba(59,130,246,0.05); border-radius: 0 8px 8px 0;
+      color: #cbd5e1; font-style: italic;
+    }
+    .blog-post .divider { border: none; border-top: 1px solid #334155; margin: 40px 0; }
+
+    /* -- Namespace badge ------------------------------------------- */
+    .ns-badge {
+      display: inline-block; padding: 2px 8px; border-radius: 4px;
+      font-size: 0.72rem; font-weight: 600; font-family: 'SF Mono',monospace;
+    }
+    .ns-shared { background: #1e1b4b; color: #a5b4fc; }
+    .ns-wazuh { background: #052e16; color: #86efac; }
+    .ns-thehive { background: #422006; color: #fde047; }
+    .ns-opencti { background: #0c4a6e; color: #7dd3fc; }
+    .ns-monitoring { background: #431407; color: #fdba74; }
+
+    /* -- Responsive ------------------------------------------------ */
+    @media (max-width: 768px) {
+      .grid { grid-template-columns: 1fr; }
+      .info-grid { grid-template-columns: 1fr; }
+      .topbar { flex-wrap: wrap; }
+      .tabs { padding: 0 12px; }
+      .tab { padding: 10px 14px; font-size: 0.78rem; }
+      .tab-content { padding: 16px; }
+      .blog-post h2 { font-size: 1.5rem; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ================================================================ -->
+<!-- TOP BAR                                                          -->
+<!-- ================================================================ -->
+<div class="topbar">
+  <h1>DonnieBot Security Center</h1>
+  <span class="version-pill">v2.0 &mdash; Feb 2026</span>
+</div>
+
+<!-- ================================================================ -->
+<!-- TABS                                                             -->
+<!-- ================================================================ -->
+<div class="tabs" id="tabs">
+  <div class="tab active" data-tab="overview">Overview</div>
+  <div class="tab" data-tab="architecture">Architecture</div>
+  <div class="tab" data-tab="components">Components</div>
+  <div class="tab" data-tab="mcp">MCP Servers</div>
+  <div class="tab" data-tab="blog">Blog Post</div>
+</div>
+
+<!-- ================================================================ -->
+<!-- TAB 1: OVERVIEW                                                  -->
+<!-- ================================================================ -->
+<div class="tab-content active" id="tab-overview">
+  <h2 class="section-title"><span class="accent">Home SOC</span> Overview</h2>
+  <p class="desc">A production-grade Security Operations Center running on a single Mac Mini M4 (16GB RAM). Detects threats, enriches indicators, and manages incidents &mdash; all from your desk.</p>
+
+  <!-- Architecture overview diagram -->
+  <div class="ascii-diagram">
+    Home Network Devices             Mac Mini M4 (16GB)
+    +-----------------+             +------------------------------------------+
+    | Linux Server    |--agent--+   |  Lima VM (10GB RAM, k3s)                 |
+    | Windows PC      |--agent--+-->|                                          |
+    | Mac Mini itself |--agent--+   |   +----------+  +----------+  +--------+ |
+    +-----------------+             |   |  Wazuh   |  | OpenCTI  |  |TheHive | |
+                                    |   |  SIEM/XDR|  |  Threat  |  |Incident| |
+    Threat Feeds                    |   | Manager  |  |  Intel   |  |Response| |
+    +-------------------+           |   | Dashboard|  | Platform |  |+Cortex | |
+    | MITRE ATT&CK      |--------->|   +----+-----+  +----+-----+  +---+----+ |
+    | AlienVault OTX     |--------->|        |             |            |       |
+    | AbuseIPDB          |--------->|        v             v            v       |
+    | VirusTotal         |--------->|   +----+-------------+------------+----+  |
+    +-------------------+           |   |         OpenSearch (Shared)        |  |
+                                    |   |   Redis | RabbitMQ | MinIO        |  |
+                                    |   +---------------------------------------+
+    macOS Host                      |                                          |
+    +-------------------+           |   Prometheus + Grafana (Monitoring)      |
+    | Claude Code + MCP |<-- API -->|   Traefik Ingress (TLS)                 |
+    +-------------------+           +------------------------------------------+</div>
+
+  <!-- Component status cards -->
+  <div class="grid">
+    <div class="card border-running">
+      <div class="card-header">
+        <span class="emoji">&#x1F6E1;</span>
+        <span class="name">Wazuh SIEM/XDR</span>
+        <span class="badge badge-running"><span class="badge-dot"></span> Always On</span>
+      </div>
+      <p class="desc-dim">Detects threats across all endpoints via agents. Indexes alerts in OpenSearch. Forwards critical alerts (level 7+) to TheHive for investigation.</p>
+      <div class="info-grid">
+        <div><div class="info-label">Version</div><div class="info-value">4.14.3</div></div>
+        <div><div class="info-label">Namespace</div><div class="info-value"><span class="ns-badge ns-wazuh">wazuh</span></div></div>
+        <div><div class="info-label">RAM Budget</div><div class="info-value">~1.8 GB</div></div>
+        <div><div class="info-label">Components</div><div class="info-value">Manager + Dashboard + Agent DaemonSet</div></div>
+      </div>
+    </div>
+
+    <div class="card border-idle">
+      <div class="card-header">
+        <span class="emoji">&#x1F50D;</span>
+        <span class="name">OpenCTI</span>
+        <span class="badge badge-ondemand">On Demand</span>
+      </div>
+      <p class="desc-dim">Cyber threat intelligence platform. Aggregates data from MITRE ATT&CK, AlienVault OTX, AbuseIPDB, VirusTotal. Links IOCs to campaigns and techniques.</p>
+      <div class="info-grid">
+        <div><div class="info-label">Version</div><div class="info-value">6.9.5</div></div>
+        <div><div class="info-label">Namespace</div><div class="info-value"><span class="ns-badge ns-opencti">opencti</span></div></div>
+        <div><div class="info-label">RAM Budget</div><div class="info-value">~2.0 GB</div></div>
+        <div><div class="info-label">Connectors</div><div class="info-value">4 (MITRE, OTX, AbuseIPDB, VT)</div></div>
+      </div>
+    </div>
+
+    <div class="card border-idle">
+      <div class="card-header">
+        <span class="emoji">&#x1F41D;</span>
+        <span class="name">TheHive + Cortex</span>
+        <span class="badge badge-ondemand">On Demand</span>
+      </div>
+      <p class="desc-dim">Incident response platform with case management. Cortex runs automated analysis via K8s Jobs (VirusTotal, AbuseIPDB, URLhaus, GeoIP, FileInfo).</p>
+      <div class="info-grid">
+        <div><div class="info-label">Version</div><div class="info-value">TheHive 5.x / Cortex 3.x</div></div>
+        <div><div class="info-label">Namespace</div><div class="info-value"><span class="ns-badge ns-thehive">thehive</span></div></div>
+        <div><div class="info-label">RAM Budget</div><div class="info-value">~1.5 GB</div></div>
+        <div><div class="info-label">Analyzers</div><div class="info-value">5 (VT, AbuseIPDB, URLhaus, GeoIP, FileInfo)</div></div>
+      </div>
+    </div>
+
+    <div class="card border-info">
+      <div class="card-header">
+        <span class="emoji">&#x1F4CA;</span>
+        <span class="name">Shared Infrastructure</span>
+        <span class="badge badge-core">Core</span>
+      </div>
+      <p class="desc-dim">OpenSearch (search/index), Redis (cache), RabbitMQ (queue), MinIO (object storage), NFS (Cortex shared filesystem). All share one namespace.</p>
+      <div class="info-grid">
+        <div><div class="info-label">Namespace</div><div class="info-value"><span class="ns-badge ns-shared">shared</span></div></div>
+        <div><div class="info-label">RAM Budget</div><div class="info-value">~3.0 GB</div></div>
+        <div><div class="info-label">Storage</div><div class="info-value">40GB OpenSearch + 5GB MinIO + 5GB NFS</div></div>
+        <div><div class="info-label">Security</div><div class="info-value">Auth enabled, credentials in K8s Secrets</div></div>
+      </div>
+    </div>
+
+    <div class="card border-info">
+      <div class="card-header">
+        <span class="emoji">&#x1F4C8;</span>
+        <span class="name">Monitoring</span>
+        <span class="badge badge-running"><span class="badge-dot"></span> Always On</span>
+      </div>
+      <p class="desc-dim">Prometheus scrapes metrics from all namespaces. Grafana provides dashboards with OpenSearch Wazuh data source for security event visualization.</p>
+      <div class="info-grid">
+        <div><div class="info-label">Namespace</div><div class="info-value"><span class="ns-badge ns-monitoring">monitoring</span></div></div>
+        <div><div class="info-label">RAM Budget</div><div class="info-value">~0.8 GB</div></div>
+        <div><div class="info-label">Retention</div><div class="info-value">15 days / 3GB</div></div>
+        <div><div class="info-label">Access</div><div class="info-value">soc.homelab.local/grafana</div></div>
+      </div>
+    </div>
+
+    <div class="card border-purple">
+      <div class="card-header">
+        <span class="emoji">&#x1F916;</span>
+        <span class="name">Claude Code + MCP</span>
+        <span class="badge badge-core">Integration</span>
+      </div>
+      <p class="desc-dim">Three MCP servers give Claude Code direct access to query Wazuh alerts, manage TheHive cases, and search OpenCTI threat intel &mdash; all from your terminal.</p>
+      <div class="info-grid">
+        <div><div class="info-label">Servers</div><div class="info-value">wazuh-mcp, thehive-mcp, opencti-mcp</div></div>
+        <div><div class="info-label">Protocol</div><div class="info-value">MCP over stdio</div></div>
+        <div><div class="info-label">Tools</div><div class="info-value">21 total (7 + 8 + 6)</div></div>
+        <div><div class="info-label">Auth</div><div class="info-value">API keys via env vars</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Resource budget -->
+  <h2 class="section-title"><span class="accent">Resource</span> Budget (16GB Mac Mini)</h2>
+  <div class="card" style="margin-bottom:20px">
+    <div class="resource-bar">
+      <span class="label">macOS Host</span>
+      <div class="bar-bg"><div class="bar-fill fill-blue" style="width:31%"></div></div>
+      <span class="val">~5.0 GB</span>
+    </div>
+    <div class="resource-bar">
+      <span class="label">k3s + System</span>
+      <div class="bar-bg"><div class="bar-fill fill-green" style="width:9%"></div></div>
+      <span class="val">~1.5 GB</span>
+    </div>
+    <div class="resource-bar">
+      <span class="label">Shared Infra</span>
+      <div class="bar-bg"><div class="bar-fill fill-green" style="width:19%"></div></div>
+      <span class="val">~3.0 GB</span>
+    </div>
+    <div class="resource-bar">
+      <span class="label">Wazuh</span>
+      <div class="bar-bg"><div class="bar-fill fill-green" style="width:11%"></div></div>
+      <span class="val">~1.8 GB</span>
+    </div>
+    <div class="resource-bar">
+      <span class="label">Monitoring</span>
+      <div class="bar-bg"><div class="bar-fill fill-green" style="width:5%"></div></div>
+      <span class="val">~0.8 GB</span>
+    </div>
+    <div class="resource-bar">
+      <span class="label">On-Demand</span>
+      <div class="bar-bg"><div class="bar-fill fill-yellow" style="width:22%"></div></div>
+      <span class="val">~3.5 GB</span>
+    </div>
+    <p class="desc-dim" style="margin-top:12px;margin-bottom:0">Steady state: ~7.1 GB used. Full investigation mode: ~10.5 GB. Swap (4GB) provides safety margin.</p>
+  </div>
+
+  <!-- Quick start -->
+  <h2 class="section-title"><span class="accent">Quick</span> Start</h2>
+  <div class="code-block"><span class="comment"># 1. Bootstrap Lima VM + k3s</span>
+<span class="cmd">./scripts/setup-lima.sh</span>
+
+<span class="comment"># 2. Deploy the full stack</span>
+<span class="cmd">./scripts/deploy-stack.sh all</span>
+
+<span class="comment"># 3. Check status</span>
+<span class="cmd">kubectl get pods --all-namespaces</span>
+
+<span class="comment"># 4. Open dashboards</span>
+<span class="comment"># https://soc.homelab.local/wazuh</span>
+<span class="comment"># https://soc.homelab.local/thehive</span>
+<span class="comment"># https://soc.homelab.local/opencti</span>
+<span class="comment"># https://soc.homelab.local/grafana</span></div>
+</div>
+
+<!-- ================================================================ -->
+<!-- TAB 2: ARCHITECTURE                                              -->
+<!-- ================================================================ -->
+<div class="tab-content" id="tab-architecture">
+  <h2 class="section-title"><span class="accent">Data Flow</span> Architecture</h2>
+  <p class="desc">Every piece of data flows through a defined pipeline. Wazuh collects, OpenSearch indexes, TheHive manages incidents, OpenCTI enriches context, and Grafana visualizes.</p>
+
+  <div class="ascii-diagram">
+  Detection Pipeline
+  ==================
+
+  Endpoint Agent ---> Wazuh Manager ---> OpenSearch (wazuh-alerts-*)
+       |                   |                    |
+       |              [level >= 7]              |
+       |                   |                    |
+       |                   v                    v
+       |            w2thive.py           Wazuh Dashboard
+       |                   |             Grafana Dashboards
+       |                   v
+       |             TheHive Alert
+       |                   |
+       |            [Analyst Triage]
+       |                   |
+       |          +--------+--------+
+       |          |                 |
+       |    Create Case       Dismiss
+       |          |
+       |          v
+       |    Cortex Analyzers
+       |    (K8s Jobs)
+       |          |
+       |          v
+       |    VirusTotal / AbuseIPDB
+       |    URLhaus / GeoIP / FileInfo
+       |          |
+       |          v
+       |    OpenCTI Enrichment
+       |    (campaigns, TTPs, IOCs)
+       |          |
+       |          v
+       |    Containment + Response
+
+  Threat Intel Pipeline
+  =====================
+
+  MITRE ATT&CK ---[weekly]--->  OpenCTI Platform
+  AlienVault OTX -[daily]---->       |
+  AbuseIPDB ------[daily]---->       v
+  VirusTotal ----[on-demand]->  STIX2 Knowledge Graph
+                                     |
+                                     v
+                              Indicator Matching
+                              IOC Correlation</div>
+
+  <!-- Network ports -->
+  <h2 class="section-title"><span class="accent">Network</span> Port Reference</h2>
+  <table class="data-table">
+    <thead>
+      <tr><th>Port</th><th>Service</th><th>Protocol</th><th>Exposed To</th></tr>
+    </thead>
+    <tbody>
+      <tr><td class="mono">443</td><td>Traefik HTTPS Ingress</td><td>TCP</td><td>macOS host</td></tr>
+      <tr><td class="mono">80</td><td>Traefik HTTP (redirects)</td><td>TCP</td><td>macOS host</td></tr>
+      <tr><td class="mono">6443</td><td>k3s API Server</td><td>TCP</td><td>macOS host (kubectl)</td></tr>
+      <tr><td class="mono">1514</td><td>Wazuh Agent Communication</td><td>TCP</td><td>LAN (for external agents)</td></tr>
+      <tr><td class="mono">1515</td><td>Wazuh Agent Registration</td><td>TCP</td><td>LAN (for external agents)</td></tr>
+      <tr><td class="mono">55000</td><td>Wazuh REST API</td><td>TCP</td><td>macOS host (MCP server)</td></tr>
+      <tr><td class="mono">9200</td><td>OpenSearch</td><td>TCP</td><td>Cluster-internal only</td></tr>
+      <tr><td class="mono">5672</td><td>RabbitMQ (AMQP)</td><td>TCP</td><td>Cluster-internal only</td></tr>
+      <tr><td class="mono">6379</td><td>Redis</td><td>TCP</td><td>Cluster-internal only</td></tr>
+      <tr><td class="mono">9000</td><td>TheHive / MinIO</td><td>TCP</td><td>Cluster-internal only</td></tr>
+      <tr><td class="mono">4000</td><td>OpenCTI Platform</td><td>TCP</td><td>Cluster-internal only</td></tr>
+      <tr><td class="mono">9001</td><td>Cortex</td><td>TCP</td><td>Cluster-internal only</td></tr>
+    </tbody>
+  </table>
+
+  <!-- Namespace map -->
+  <h2 class="section-title"><span class="accent">Namespace</span> Map</h2>
+  <div class="grid">
+    <div class="card">
+      <div class="card-header">
+        <span class="ns-badge ns-shared">shared</span>
+        <span class="name">Shared Infrastructure</span>
+      </div>
+      <p class="desc-dim">OpenSearch, Redis, RabbitMQ, MinIO, NFS Server. Used by all services to avoid duplicate resource consumption.</p>
+    </div>
+    <div class="card">
+      <div class="card-header">
+        <span class="ns-badge ns-wazuh">wazuh</span>
+        <span class="name">SIEM / XDR</span>
+      </div>
+      <p class="desc-dim">Wazuh Manager, Dashboard, Agent DaemonSet, ConfigMaps for rules/decoders, w2thive integration script.</p>
+    </div>
+    <div class="card">
+      <div class="card-header">
+        <span class="ns-badge ns-thehive">thehive</span>
+        <span class="name">Incident Response</span>
+      </div>
+      <p class="desc-dim">TheHive platform, Cortex analysis engine, Cortex RBAC (ServiceAccount + Role for K8s Jobs).</p>
+    </div>
+    <div class="card">
+      <div class="card-header">
+        <span class="ns-badge ns-opencti">opencti</span>
+        <span class="name">Threat Intelligence</span>
+      </div>
+      <p class="desc-dim">OpenCTI platform, worker, connector CronJobs (MITRE, OTX, AbuseIPDB) and on-demand Deployment (VirusTotal).</p>
+    </div>
+    <div class="card">
+      <div class="card-header">
+        <span class="ns-badge ns-monitoring">monitoring</span>
+        <span class="name">Observability</span>
+      </div>
+      <p class="desc-dim">Prometheus (metrics collection), Grafana (dashboards), Alertmanager, kube-state-metrics, node-exporter.</p>
+    </div>
+  </div>
+
+  <!-- Design decisions -->
+  <h2 class="section-title"><span class="accent">Design</span> Decisions</h2>
+  <div class="grid">
+    <div class="card">
+      <div class="card-header"><span class="name">Why Shared OpenSearch?</span></div>
+      <p class="desc-dim">Running separate Elasticsearch instances per service would cost 6-12GB RAM. A single OpenSearch with index-per-service isolation uses only 2GB. Trade-off: shared failure domain (acceptable for home lab).</p>
+    </div>
+    <div class="card">
+      <div class="card-header"><span class="name">Why Lima + k3s?</span></div>
+      <p class="desc-dim">k3s is Linux-native, so macOS needs a VM. Lima uses Apple's VZ framework (near-native speed on M-series) with Rosetta 2 for transparent x86 container support. k3s uses 512MB vs k8s's 1.5GB.</p>
+    </div>
+    <div class="card">
+      <div class="card-header"><span class="name">Why Phased Startup?</span></div>
+      <p class="desc-dim">16GB total means you can't run everything simultaneously. Core services (Wazuh + shared infra + monitoring) run always-on at ~3.2GB. Investigation tools scale up on-demand.</p>
+    </div>
+    <div class="card">
+      <div class="card-header"><span class="name">Why CronJob Connectors?</span></div>
+      <p class="desc-dim">Long-running connector Deployments waste RAM waiting for new data. CronJobs run nightly, pull updates, then exit. VirusTotal stays as a Deployment (replicas: 0) for on-demand enrichment.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ================================================================ -->
+<!-- TAB 3: COMPONENTS                                                -->
+<!-- ================================================================ -->
+<div class="tab-content" id="tab-components">
+  <h2 class="section-title"><span class="accent">Component</span> Details</h2>
+
+  <!-- Wazuh -->
+  <div class="card border-running" style="margin-bottom:16px">
+    <div class="card-header">
+      <span class="emoji">&#x1F6E1;</span>
+      <span class="name">Wazuh 4.14.3</span>
+      <span class="badge badge-running"><span class="badge-dot"></span> Core</span>
+    </div>
+    <p class="desc">SIEM, XDR, and compliance platform. Collects security logs from agents, runs detection rules, performs file integrity monitoring, rootkit detection, and vulnerability scanning.</p>
+    <div class="info-grid">
+      <div><div class="info-label">Helm Values</div><div class="info-value mono">k8s/wazuh/helm-values.yaml</div></div>
+      <div><div class="info-label">Custom Rules</div><div class="info-value mono">k8s/wazuh/manager/configmap-rules.yaml</div></div>
+      <div><div class="info-label">Custom Decoders</div><div class="info-value mono">k8s/wazuh/manager/configmap-decoders.yaml</div></div>
+      <div><div class="info-label">Agent DaemonSet</div><div class="info-value mono">k8s/wazuh/agents/daemonset.yaml</div></div>
+      <div><div class="info-label">Manager RAM</div><div class="info-value">512Mi req / 1Gi limit</div></div>
+      <div><div class="info-label">Dashboard RAM</div><div class="info-value">256Mi req / 512Mi limit</div></div>
+      <div><div class="info-label">Agent RAM</div><div class="info-value">128Mi req / 384Mi limit</div></div>
+      <div><div class="info-label">TheHive Integration</div><div class="info-value">w2thive.py (alerts level 7+)</div></div>
+    </div>
+  </div>
+
+  <!-- OpenCTI -->
+  <div class="card border-idle" style="margin-bottom:16px">
+    <div class="card-header">
+      <span class="emoji">&#x1F50D;</span>
+      <span class="name">OpenCTI 6.9.5</span>
+      <span class="badge badge-ondemand">On Demand</span>
+    </div>
+    <p class="desc">Threat intelligence platform built on STIX2 standard. Creates a knowledge graph of threats, campaigns, TTPs, and indicators. Correlates IOCs with real-world context.</p>
+    <div class="info-grid">
+      <div><div class="info-label">Helm Values</div><div class="info-value mono">k8s/opencti/helm-values.yaml</div></div>
+      <div><div class="info-label">Connectors</div><div class="info-value mono">k8s/opencti/connectors/</div></div>
+      <div><div class="info-label">Platform RAM</div><div class="info-value">1Gi req / 1.5Gi limit</div></div>
+      <div><div class="info-label">Worker RAM</div><div class="info-value">256Mi req / 512Mi limit</div></div>
+    </div>
+
+    <h4 style="font-size:0.82rem;color:#94a3b8;margin:12px 0 8px">Connectors</h4>
+    <table class="data-table">
+      <thead><tr><th>Connector</th><th>Schedule</th><th>Image Tag</th><th>Free Tier Limit</th></tr></thead>
+      <tbody>
+        <tr><td>MITRE ATT&CK</td><td><span class="badge badge-scheduled">Weekly</span> Sun 3am</td><td class="mono">6.9.5</td><td>Unlimited (public STIX)</td></tr>
+        <tr><td>AlienVault OTX</td><td><span class="badge badge-scheduled">Daily</span> 2am</td><td class="mono">6.9.5</td><td>10,000 req/hour</td></tr>
+        <tr><td>AbuseIPDB</td><td><span class="badge badge-scheduled">Daily</span> 4am</td><td class="mono">6.9.5</td><td>1,000 req/day</td></tr>
+        <tr><td>VirusTotal</td><td><span class="badge badge-ondemand">On Demand</span></td><td class="mono">6.9.5</td><td>500 req/day</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- TheHive + Cortex -->
+  <div class="card border-idle" style="margin-bottom:16px">
+    <div class="card-header">
+      <span class="emoji">&#x1F41D;</span>
+      <span class="name">TheHive 5.x + Cortex 3.x</span>
+      <span class="badge badge-ondemand">On Demand</span>
+    </div>
+    <p class="desc">Incident response platform. TheHive manages cases, alerts, and observables. Cortex provides automated analysis by running analyzers as Kubernetes Jobs.</p>
+    <div class="info-grid">
+      <div><div class="info-label">TheHive Config</div><div class="info-value mono">k8s/thehive/helm-values.yaml</div></div>
+      <div><div class="info-label">Cortex Config</div><div class="info-value mono">k8s/thehive/cortex/helm-values.yaml</div></div>
+      <div><div class="info-label">RBAC</div><div class="info-value mono">k8s/thehive/cortex/rbac.yaml</div></div>
+      <div><div class="info-label">Integration</div><div class="info-value mono">k8s/thehive/integration/w2thive.py</div></div>
+    </div>
+
+    <h4 style="font-size:0.82rem;color:#94a3b8;margin:12px 0 8px">Cortex Analyzers</h4>
+    <table class="data-table">
+      <thead><tr><th>Analyzer</th><th>Observable Types</th><th>Job Memory Limit</th></tr></thead>
+      <tbody>
+        <tr><td>VirusTotal_GetReport_3_1</td><td>IP, Domain, Hash, URL, File</td><td>512Mi</td></tr>
+        <tr><td>AbuseIPDB_1_0</td><td>IP</td><td>512Mi</td></tr>
+        <tr><td>URLhaus_2_0</td><td>URL, Domain</td><td>512Mi</td></tr>
+        <tr><td>MaxMind_GeoIP_4_0</td><td>IP</td><td>512Mi</td></tr>
+        <tr><td>FileInfo_8_0</td><td>File</td><td>512Mi</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Shared Infra -->
+  <div class="card border-info" style="margin-bottom:16px">
+    <div class="card-header">
+      <span class="emoji">&#x1F5C4;</span>
+      <span class="name">Shared Infrastructure</span>
+      <span class="badge badge-core">Core</span>
+    </div>
+    <table class="data-table">
+      <thead><tr><th>Service</th><th>Purpose</th><th>Config File</th><th>RAM Limit</th></tr></thead>
+      <tbody>
+        <tr><td>OpenSearch</td><td>Search index (alerts, cases, STIX)</td><td class="mono">k8s/shared/opensearch.yaml</td><td>2 GB</td></tr>
+        <tr><td>Redis</td><td>Session cache (OpenCTI, TheHive)</td><td class="mono">k8s/shared/redis.yaml</td><td>256 Mi</td></tr>
+        <tr><td>RabbitMQ</td><td>Message queue (OpenCTI workers)</td><td class="mono">k8s/shared/rabbitmq.yaml</td><td>256 Mi</td></tr>
+        <tr><td>MinIO</td><td>Object storage (files, attachments)</td><td class="mono">k8s/shared/minio.yaml</td><td>256 Mi</td></tr>
+        <tr><td>NFS Server</td><td>Shared filesystem (Cortex jobs)</td><td class="mono">k8s/storage/nfs-server.yaml</td><td>128 Mi</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Monitoring -->
+  <div class="card border-info" style="margin-bottom:16px">
+    <div class="card-header">
+      <span class="emoji">&#x1F4CA;</span>
+      <span class="name">Monitoring Stack</span>
+      <span class="badge badge-running"><span class="badge-dot"></span> Always On</span>
+    </div>
+    <p class="desc">kube-prometheus-stack: Prometheus (metrics), Grafana (dashboards), Alertmanager (alerting). Grafana includes OpenSearch data source for Wazuh security events.</p>
+    <div class="info-grid">
+      <div><div class="info-label">Config</div><div class="info-value mono">k8s/monitoring/kube-prometheus-values.yaml</div></div>
+      <div><div class="info-label">Prometheus Retention</div><div class="info-value">15 days / 3GB</div></div>
+      <div><div class="info-label">Grafana Datasource</div><div class="info-value">OpenSearch (wazuh-alerts-*)</div></div>
+      <div><div class="info-label">Access</div><div class="info-value">soc.homelab.local/grafana</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- ================================================================ -->
+<!-- TAB 4: MCP SERVERS                                               -->
+<!-- ================================================================ -->
+<div class="tab-content" id="tab-mcp">
+  <h2 class="section-title"><span class="accent">MCP Servers</span> for Claude Code</h2>
+  <p class="desc">Three Model Context Protocol servers give Claude Code direct tool access to the entire SOC stack. Query alerts, manage cases, search threat intel &mdash; all from natural language in your terminal.</p>
+
+  <!-- Wazuh MCP -->
+  <div class="card border-running" style="margin-bottom:16px">
+    <div class="card-header">
+      <span class="emoji">&#x1F6E1;</span>
+      <span class="name">wazuh-mcp</span>
+    </div>
+    <p class="desc-dim">Queries the Wazuh REST API. Auth: user/password to JWT token flow with auto-refresh. 10s request timeout.</p>
+    <div class="info-grid">
+      <div><div class="info-label">Source</div><div class="info-value mono">mcp-servers/wazuh-mcp/src/index.ts</div></div>
+      <div><div class="info-label">Env Vars</div><div class="info-value mono">WAZUH_API_URL, WAZUH_API_USER, WAZUH_API_PASSWORD</div></div>
+    </div>
+    <table class="data-table">
+      <thead><tr><th>Tool</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">list-alerts</td><td>List recent alerts with filtering (level, agent, rule)</td></tr>
+        <tr><td class="mono">get-alert</td><td>Get full details of a specific alert</td></tr>
+        <tr><td class="mono">search-agents</td><td>Search agents by name, IP, status, OS</td></tr>
+        <tr><td class="mono">get-agent-info</td><td>Get detailed agent info and health status</td></tr>
+        <tr><td class="mono">get-vulnerabilities</td><td>List detected CVEs per agent</td></tr>
+        <tr><td class="mono">get-rules</td><td>Search active detection rules</td></tr>
+        <tr><td class="mono">get-decoders</td><td>Search active log decoders</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- TheHive MCP -->
+  <div class="card border-idle" style="margin-bottom:16px">
+    <div class="card-header">
+      <span class="emoji">&#x1F41D;</span>
+      <span class="name">thehive-mcp</span>
+    </div>
+    <p class="desc-dim">Manages TheHive cases and triggers Cortex analysis. Auth: API key in Bearer header. 10s request timeout.</p>
+    <div class="info-grid">
+      <div><div class="info-label">Source</div><div class="info-value mono">mcp-servers/thehive-mcp/src/index.ts</div></div>
+      <div><div class="info-label">Env Vars</div><div class="info-value mono">THEHIVE_URL, THEHIVE_API_KEY</div></div>
+    </div>
+    <table class="data-table">
+      <thead><tr><th>Tool</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">list-cases</td><td>List incident cases by status and severity</td></tr>
+        <tr><td class="mono">create-case</td><td>Create a new incident case</td></tr>
+        <tr><td class="mono">get-case</td><td>Get case details with observables and tasks</td></tr>
+        <tr><td class="mono">add-observable</td><td>Add an IOC to a case</td></tr>
+        <tr><td class="mono">run-analyzer</td><td>Run Cortex analyzer on an observable</td></tr>
+        <tr><td class="mono">get-analyzer-report</td><td>Get Cortex analysis results</td></tr>
+        <tr><td class="mono">search-alerts</td><td>Search alerts from Wazuh integration</td></tr>
+        <tr><td class="mono">merge-alerts</td><td>Merge related alerts into a case</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- OpenCTI MCP -->
+  <div class="card border-info" style="margin-bottom:16px">
+    <div class="card-header">
+      <span class="emoji">&#x1F50D;</span>
+      <span class="name">opencti-mcp</span>
+    </div>
+    <p class="desc-dim">Queries the OpenCTI GraphQL API for threat intelligence. Auth: API token in Bearer header. 10s request timeout.</p>
+    <div class="info-grid">
+      <div><div class="info-label">Source</div><div class="info-value mono">mcp-servers/opencti-mcp/src/index.ts</div></div>
+      <div><div class="info-label">Env Vars</div><div class="info-value mono">OPENCTI_URL, OPENCTI_TOKEN</div></div>
+    </div>
+    <table class="data-table">
+      <thead><tr><th>Tool</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">search-indicators</td><td>Search threat indicators by value or type</td></tr>
+        <tr><td class="mono">get-indicator</td><td>Get indicator details and relationships</td></tr>
+        <tr><td class="mono">search-reports</td><td>Search threat intelligence reports</td></tr>
+        <tr><td class="mono">get-attack-patterns</td><td>List MITRE ATT&CK techniques</td></tr>
+        <tr><td class="mono">enrich-observable</td><td>Request enrichment for an observable</td></tr>
+        <tr><td class="mono">get-relationships</td><td>Get entity relationships (uses, targets, etc.)</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Usage examples -->
+  <h2 class="section-title"><span class="accent">Usage</span> Examples</h2>
+  <div class="code-block"><span class="comment"># In Claude Code, just ask in natural language:</span>
+
+<span class="string">"Show me all Wazuh alerts above level 10 from the last day"</span>
+<span class="comment"># -> wazuh-mcp: list-alerts(level_min=10, limit=50)</span>
+
+<span class="string">"What does OpenCTI know about IP 203.0.113.50?"</span>
+<span class="comment"># -> opencti-mcp: search-indicators(value="203.0.113.50", type="IPv4-Addr")</span>
+
+<span class="string">"Create a TheHive case for the brute force attack and add the source IP"</span>
+<span class="comment"># -> thehive-mcp: create-case(title="Brute Force from 203.0.113.50", severity=3)</span>
+<span class="comment"># -> thehive-mcp: add-observable(case_id="~123", data_type="ip", data="203.0.113.50")</span>
+
+<span class="string">"Run VirusTotal on that IP"</span>
+<span class="comment"># -> thehive-mcp: run-analyzer(observable_id="...", analyzer_id="VirusTotal_GetReport_3_1")</span>
+
+<span class="string">"What MITRE techniques are associated with credential access?"</span>
+<span class="comment"># -> opencti-mcp: get-attack-patterns(search="credential access")</span></div>
+</div>
+
+<!-- ================================================================ -->
+<!-- TAB 5: BLOG POST                                                 -->
+<!-- ================================================================ -->
+<div class="tab-content" id="tab-blog">
+  <div class="blog-post">
+    <h2>I Built a Full Security Operations Center on a $600 Mac Mini</h2>
+    <p class="byline">Aaron (DonnieBot) &mdash; February 2026 &mdash; 8 min read</p>
+
+    <p class="lead">I've been building personal infrastructure projects under the DonnieBot umbrella for a while now &mdash; a service monitor, a flight tracker, the usual. But this one's different. This one detects actual threats, enriches them with real-world intelligence, and lets me manage incidents through a proper SOC pipeline. All running on a single Mac Mini M4 sitting on my desk.</p>
+
+    <hr class="divider">
+
+    <h3>Why Build a Home SOC?</h3>
+    <p>I wanted to go beyond just monitoring uptime. Security Operations Centers are what real enterprise teams run &mdash; Wazuh for SIEM, threat intelligence platforms for context, incident response tools for tracking cases through to resolution. But enterprise SOCs run on dozens of servers with dedicated teams.</p>
+    <p>Could I run the whole thing on 16 gigs of RAM?</p>
+    <p>Turns out, yes. But it took some creative engineering.</p>
+
+    <h3>The Stack</h3>
+    <p>Here's what's running:</p>
+    <ul>
+      <li><strong>Wazuh 4.14.3</strong> &mdash; The SIEM/XDR backbone. Agents on every device collect logs, detect threats, scan for vulnerabilities. It's the eyes and ears.</li>
+      <li><strong>OpenCTI 6.9.5</strong> &mdash; Threat intelligence platform. Pulls from MITRE ATT&CK, AlienVault OTX, AbuseIPDB, and VirusTotal. Builds a knowledge graph of threats so when an IP shows up in an alert, I immediately know if it's been seen in campaigns, what techniques it's associated with, and who's behind it.</li>
+      <li><strong>TheHive + Cortex</strong> &mdash; Incident response. TheHive manages cases from alert to resolution. Cortex runs automated analysis &mdash; feed it an IP and it'll check VirusTotal, AbuseIPDB, and GeoIP simultaneously, all as Kubernetes Jobs.</li>
+      <li><strong>Prometheus + Grafana</strong> &mdash; Monitoring the monitors. Resource usage, pod health, custom Wazuh dashboards.</li>
+    </ul>
+    <p>All of it running on Kubernetes (k3s) inside a Lima VM on macOS.</p>
+
+    <h3>The 16GB Challenge</h3>
+    <p>This was the hard part. Running Wazuh, OpenCTI, TheHive, OpenSearch, Redis, RabbitMQ, MinIO, Prometheus, and Grafana simultaneously would eat 12+ GB easy. macOS itself needs 4-5 GB. The math doesn't work.</p>
+    <p>So I designed a phased startup system:</p>
+    <ul>
+      <li><strong>Always-on tier (~3.2 GB)</strong> &mdash; Wazuh + OpenSearch + monitoring. The core SIEM pipeline never sleeps.</li>
+      <li><strong>On-demand tier (~3.5 GB)</strong> &mdash; TheHive, Cortex, and OpenCTI scale up when I'm actively investigating something, then scale back down.</li>
+      <li><strong>Scheduled tier</strong> &mdash; Threat intel connectors run as CronJobs. MITRE data updates weekly, OTX and AbuseIPDB run nightly. They execute, pull data, and exit. No RAM wasted on idle Deployments.</li>
+    </ul>
+    <p>The other key decision was sharing infrastructure. Instead of each service running its own Elasticsearch instance (which is how the official docs suggest deploying), I run a single OpenSearch with index-per-service isolation. That alone saved 4-6 GB.</p>
+
+    <h3>Lima + k3s: Kubernetes on macOS</h3>
+    <p>k3s is Linux-native, so it needs a VM on macOS. I went with Lima using Apple's VZ framework &mdash; it's basically native performance on M-series chips, and Rosetta 2 handles x86 container images transparently.</p>
+    <p>The VM gets 10 GB of the 16 GB total, with 4 CPUs and 120 GB disk. There's also a 4 GB swap file as a safety net. The kubelet is tuned with eviction thresholds so it'll start killing non-critical pods before the whole node OOMs.</p>
+
+    <h3>The Integration Pipeline</h3>
+    <p>Here's what happens when a threat is detected:</p>
+    <ol>
+      <li>A Wazuh agent on one of my devices sees something suspicious &mdash; a brute force attempt, a suspicious process, a file integrity change.</li>
+      <li>The Wazuh Manager evaluates it against detection rules (including custom ones I wrote for K8s audit logs, crypto miners, and reverse shells).</li>
+      <li>If the alert is level 7 or above, a custom Python script (<code>w2thive.py</code>) fires. It extracts observables (IPs, hashes, URLs, filenames) and creates a TheHive alert with proper severity mapping.</li>
+      <li>I triage the alert in TheHive. If it's real, I escalate it to a case.</li>
+      <li>From the case, I run Cortex analyzers on the observables. Each analyzer runs as a separate K8s Job, checks the external service, and reports back.</li>
+      <li>For deeper context, I check OpenCTI &mdash; is this IP part of a known campaign? What MITRE techniques does it map to? Has it been reported by other threat feeds?</li>
+    </ol>
+    <p>And here's the cool part: I can do all of this from Claude Code.</p>
+
+    <h3>MCP: The AI-Native SOC</h3>
+    <p>I built three MCP (Model Context Protocol) servers that give Claude Code direct tool access to the entire SOC stack. Instead of clicking through three different web UIs, I just ask:</p>
+    <blockquote>"Show me all critical Wazuh alerts, check if any of the source IPs are in OpenCTI, and create a TheHive case for the ones that match known campaigns."</blockquote>
+    <p>Claude Code calls the right tools, correlates the data, and handles the workflow. 21 tools across three servers &mdash; 7 for Wazuh (alerts, agents, vulnerabilities, rules), 8 for TheHive (cases, observables, analyzers), and 6 for OpenCTI (indicators, reports, attack patterns, enrichment).</p>
+    <p>Each server has 10-second request timeouts, connectivity checks on startup, and proper error handling. They're TypeScript, built on the MCP SDK, and communicate over stdio.</p>
+
+    <h3>Security Hardening</h3>
+    <p>Building security tools that are themselves insecure would be ironic. So I did a full audit and fixed 43 issues:</p>
+    <ul>
+      <li><strong>No hardcoded credentials.</strong> Every password, API key, and secret lives in Kubernetes Secrets with a template file for setup.</li>
+      <li><strong>TLS on the ingress.</strong> Self-signed cert with proper SAN for <code>soc.homelab.local</code>. All dashboards accessed over HTTPS through Traefik with BasicAuth middleware.</li>
+      <li><strong>OpenSearch security enabled.</strong> The default scaffold had it disabled. Now it has internal user auth with credentials from Secrets.</li>
+      <li><strong>Redis auth, NFS root_squash, Cortex RBAC</strong> &mdash; all the little things that would be actual vulnerabilities if this were exposed.</li>
+      <li><strong>All container images pinned.</strong> No <code>:latest</code> tags anywhere. Wazuh 4.14.3, OpenCTI connectors 6.9.5, NFS server 2.2.1.</li>
+    </ul>
+
+    <h3>What's Next</h3>
+    <p>The foundation is solid. Here's where it goes from here:</p>
+    <ul>
+      <li><strong>Wazuh agent on the Mac Mini itself</strong> &mdash; monitoring the host that runs the SOC.</li>
+      <li><strong>Custom Grafana dashboards</strong> &mdash; attack maps, top threat actors, vulnerability heat maps.</li>
+      <li><strong>Automated response playbooks</strong> &mdash; when Wazuh detects a confirmed threat, auto-block the IP and create the case without human intervention.</li>
+      <li><strong>Pi-hole integration</strong> &mdash; feed malicious domains from OpenCTI into DNS blocking.</li>
+    </ul>
+    <p>The whole thing is open source, documented with runbooks, and deploys with two commands. If you've got a spare machine and 16 GB of RAM, you can run a real SOC too.</p>
+
+    <hr class="divider">
+    <p style="color:#64748b;font-size:0.85rem;text-align:center">Built with Kubernetes, hardened with paranoia, and integrated with Claude Code.</p>
+  </div>
+</div>
+
+<!-- ================================================================ -->
+<!-- TAB SWITCHING JS                                                 -->
+<!-- ================================================================ -->
+<script>
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+    tab.classList.add('active');
+    document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
+  });
+});
+</script>
+</body>
+</html>

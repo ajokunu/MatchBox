@@ -1,0 +1,42 @@
+# Kubernetes namespaces for DonnieBot Security Center
+# Each SOC component gets its own namespace for isolation and resource management
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: shared
+  labels:
+    app.kubernetes.io/part-of: donniebot-soc
+    purpose: shared-infrastructure
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: wazuh
+  labels:
+    app.kubernetes.io/part-of: donniebot-soc
+    purpose: siem-xdr
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: thehive
+  labels:
+    app.kubernetes.io/part-of: donniebot-soc
+    purpose: incident-response
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: opencti
+  labels:
+    app.kubernetes.io/part-of: donniebot-soc
+    purpose: threat-intelligence
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: monitoring
+  labels:
+    app.kubernetes.io/part-of: donniebot-soc
+    purpose: observability

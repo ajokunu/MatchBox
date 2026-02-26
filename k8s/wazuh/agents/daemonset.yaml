@@ -1,0 +1,62 @@
+# Wazuh Agent DaemonSet
+# Runs one agent per k3s node to monitor all containers and the host
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: wazuh-agent
+  namespace: wazuh
+  labels:
+    app: wazuh-agent
+spec:
+  selector:
+    matchLabels:
+      app: wazuh-agent
+  template:
+    metadata:
+      labels:
+        app: wazuh-agent
+    spec:
+      # Tolerate all taints to run on every node including control plane
+      tolerations:
+        - operator: Exists
+      # Host networking for full visibility into node traffic
+      hostNetwork: true
+      hostPID: true
+      containers:
+        - name: wazuh-agent
+          image: wazuh/wazuh-agent:4.14.3
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "384Mi"
+              cpu: "200m"
+          env:
+            - name: WAZUH_MANAGER
+              value: "wazuh-manager.wazuh.svc.cluster.local"
+            - name: WAZUH_AGENT_GROUP
+              value: "k8s-nodes"
+          # Mount host filesystem for FIM and log collection
+          volumeMounts:
+            - name: host-root
+              mountPath: /host
+              readOnly: true
+            - name: host-var-log
+              mountPath: /var/log
+              readOnly: true
+            - name: host-etc
+              mountPath: /host/etc
+              readOnly: true
+          securityContext:
+            privileged: true  # Required for rootcheck and FIM on host
+      volumes:
+        - name: host-root
+          hostPath:
+            path: /
+        - name: host-var-log
+          hostPath:
+            path: /var/log
+        - name: host-etc
+          hostPath:
+            path: /etc

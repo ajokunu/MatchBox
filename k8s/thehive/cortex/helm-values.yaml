@@ -1,0 +1,81 @@
+# Cortex Helm Values — Automated Analysis Engine
+# Chart: strangebee/cortex (https://strangebee.github.io/helm-charts/)
+#
+# Install:
+#   helm install cortex strangebee/cortex -n thehive -f cortex/helm-values.yaml
+
+cortex:
+  # Resource limits — slim config
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "100m"
+    limits:
+      memory: "512Mi"
+      cpu: "250m"
+
+  # Cortex uses its own Elasticsearch index (separate from TheHive)
+  elasticsearch:
+    url: "http://opensearch.shared.svc.cluster.local:9200"
+    indexPrefix: "cortex"
+
+  # Kubernetes job runner — how Cortex executes analyzers
+  job:
+    # Cortex creates K8s Jobs for each analyzer/responder invocation
+    runner: "kubernetes"
+    kubernetes:
+      # Namespace where analyzer jobs run
+      namespace: "thehive"
+      # ServiceAccount with permission to create Jobs (see rbac.yaml)
+      serviceAccount: "cortex-job-runner"
+      # NFS volume for sharing data between Cortex and analyzer pods
+      sharedVolume:
+        nfs:
+          server: "nfs-server.shared.svc.cluster.local"
+          path: "/exports/cortex"
+      # Resource limits for individual analyzer pods
+      jobResources:
+        requests:
+          memory: "128Mi"
+          cpu: "100m"
+        limits:
+          memory: "512Mi"
+          cpu: "300m"
+
+  # Analyzer configuration
+  analyzers:
+    # VirusTotal — file/hash/IP/domain reputation
+    - name: "VirusTotal_GetReport_3_1"
+      enabled: true
+      config:
+        # API key set via Secret
+        auto_extract_artifacts: true
+
+    # AbuseIPDB — IP reputation
+    - name: "AbuseIPDB_1_0"
+      enabled: true
+      config:
+        max_age_in_days: 30
+
+    # URLhaus — malicious URL detection
+    - name: "URLhaus_2_0"
+      enabled: true
+
+    # MaxMind GeoIP — IP geolocation
+    - name: "MaxMind_GeoIP_4_0"
+      enabled: true
+
+    # FileInfo — basic file analysis (hash, MIME, size)
+    - name: "FileInfo_8_0"
+      enabled: true
+
+# Service
+service:
+  type: ClusterIP
+  port: 9001
+
+# Persistent storage
+persistence:
+  enabled: true
+  size: "2Gi"
+  storageClass: "local-path"

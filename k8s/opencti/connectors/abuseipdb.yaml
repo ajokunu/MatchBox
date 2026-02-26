@@ -1,0 +1,57 @@
+# OpenCTI AbuseIPDB Connector
+# Imports reported malicious IP addresses with confidence scores
+# Schedule: Daily CronJob
+# Free tier: 1,000 requests/day
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: opencti-connector-abuseipdb
+  namespace: opencti
+  labels:
+    app: opencti-connector
+    connector: abuseipdb
+spec:
+  schedule: "0 4 * * *"  # Daily at 4 AM (staggered from OTX)
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: abuseipdb
+              image: opencti/connector-abuseipdb:6.9.5
+              resources:
+                requests:
+                  memory: "128Mi"
+                  cpu: "50m"
+                limits:
+                  memory: "256Mi"
+                  cpu: "200m"
+              env:
+                - name: OPENCTI_URL
+                  value: "http://opencti.opencti.svc.cluster.local:4000"
+                - name: OPENCTI_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: opencti-secrets
+                      key: admin-token
+                - name: CONNECTOR_ID
+                  value: "abuseipdb-connector"
+                - name: CONNECTOR_TYPE
+                  value: "EXTERNAL_IMPORT"
+                - name: CONNECTOR_NAME
+                  value: "AbuseIPDB"
+                - name: CONNECTOR_SCOPE
+                  value: "abuseipdb"
+                - name: CONNECTOR_LOG_LEVEL
+                  value: "info"
+                - name: ABUSEIPDB_API_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: opencti-secrets
+                      key: abuseipdb-api-key
+                - name: ABUSEIPDB_MAX_TLP
+                  value: "TLP:AMBER"
+                - name: ABUSEIPDB_SCORE_THRESHOLD
+                  value: "80"  # Only import IPs with 80%+ confidence

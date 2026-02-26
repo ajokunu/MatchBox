@@ -1,0 +1,50 @@
+# Custom Wazuh Log Decoders
+# Parse structured log formats from K8s and container runtimes
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: wazuh-custom-decoders
+  namespace: wazuh
+  labels:
+    app: wazuh-manager
+data:
+  k8s-decoders.xml: |
+    <!-- Kubernetes audit log decoder -->
+    <decoder name="kubernetes-audit">
+      <prematch>^{"kind":"Event","apiVersion":"audit.k8s.io</prematch>
+    </decoder>
+
+    <decoder name="kubernetes-audit-fields">
+      <parent>kubernetes-audit</parent>
+      <regex type="json">
+        verb=verb,
+        user.username=user.username,
+        objectRef.resource=objectRef.resource,
+        objectRef.namespace=objectRef.namespace,
+        objectRef.name=objectRef.name,
+        responseStatus.code=responseStatus.code,
+        sourceIPs=sourceIPs
+      </regex>
+    </decoder>
+
+    <!-- Container runtime (containerd) log decoder -->
+    <decoder name="containerd-log">
+      <prematch>^time="</prematch>
+    </decoder>
+
+    <decoder name="containerd-log-fields">
+      <parent>containerd-log</parent>
+      <regex>^time="(\S+)" level=(\w+) msg="(.+)"</regex>
+      <order>timestamp,severity,message</order>
+    </decoder>
+
+    <!-- K3s server log decoder -->
+    <decoder name="k3s-server">
+      <prematch>^E\d{4}|^W\d{4}|^I\d{4}</prematch>
+    </decoder>
+
+    <decoder name="k3s-server-fields">
+      <parent>k3s-server</parent>
+      <regex>^(\w)\d{4} (\S+)\s+\d+\s+(\S+):\d+\] (.+)</regex>
+      <order>severity,timestamp,source_file,message</order>
+    </decoder>

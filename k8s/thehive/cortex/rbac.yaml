@@ -1,0 +1,49 @@
+# Cortex RBAC — ServiceAccount + permissions for creating Kubernetes Jobs
+# Cortex needs to create and manage Jobs in the thehive namespace to run analyzers.
+# Each analyzer runs as a separate K8s Job (one pod per analysis request).
+# Without this RBAC, every Cortex analyzer invocation fails silently.
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: cortex-job-runner
+  namespace: thehive
+  labels:
+    app: cortex
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: cortex-job-runner
+  namespace: thehive
+  labels:
+    app: cortex
+rules:
+  # Create and manage analyzer/responder Jobs
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["create", "get", "list", "watch", "delete"]
+  # Read pod logs (for analyzer output)
+  - apiGroups: [""]
+    resources: ["pods", "pods/log"]
+    verbs: ["get", "list", "watch"]
+  # Manage PVCs for analyzer data (NFS claims)
+  - apiGroups: [""]
+    resources: ["persistentvolumeclaims"]
+    verbs: ["create", "get", "list", "patch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: cortex-job-runner
+  namespace: thehive
+  labels:
+    app: cortex
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: cortex-job-runner
+subjects:
+  - kind: ServiceAccount
+    name: cortex-job-runner
+    namespace: thehive
