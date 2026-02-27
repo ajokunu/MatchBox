@@ -1,0 +1,67 @@
+/* Solarized Light — MatchBox SOC Command Center
+   Cream backgrounds + matchbox-red accents */
+:root {
+  --bg-primary: #fdf6e3;
+  --bg-secondary: #f5eedc;
+  --bg-card: #eee8d5;
+  --bg-card-hover: #e6dfc8;
+  --border: #d3c9a8;
+  --border-light: #e0d8c0;
+  --accent-red: #cb2d3e;
+  --accent-blue: #268bd2;
+  --accent-green: #2aa198;
+  --accent-orange: #cb4b16;
+  --accent-purple: #6c71c4;
+  --accent-cyan: #2aa198;
+  --accent-yellow: #b58900;
+  --text-primary: #073642;
+  --text-secondary: #586e75;
+  --text-dim: #93a1a1;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: 'SF Mono', 'Fira Code', 'JetBrains Mono', 'Cascadia Code', 'Menlo', monospace;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  overflow: hidden;
+  height: 100vh;
+  -webkit-font-smoothing: antialiased;
+}
+
+a { color: inherit; text-decoration: none; }
+
+/* Scrollbar — warm tones */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: var(--bg-secondary); }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-dim); }
+
+/* Accent line — matchbox red */
+.scanline {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--accent-red), transparent);
+  opacity: 0.15;
+  animation: scanline 8s linear infinite;
+  pointer-events: none;
+  z-index: 1000;
+}
+@keyframes scanline {
+  0% { top: 0; }
+  100% { top: 100vh; }
+}
+
+/* Status dot animations */
+@keyframes pulse-glow {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}

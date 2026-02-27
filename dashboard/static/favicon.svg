@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <defs>
+    <linearGradient id="flame" x1="0" y1="1" x2="0" y2="0">
+      <stop offset="0%" stop-color="#cb2d3e"/>
+      <stop offset="60%" stop-color="#ef7b45"/>
+      <stop offset="100%" stop-color="#fbbf24"/>
+    </linearGradient>
+  </defs>
+  <!-- Matchbox body — cream -->
+  <rect x="2" y="8" width="28" height="22" rx="3" fill="#eee8d5" stroke="#d3c9a8" stroke-width="1"/>
+  <!-- Red striker strip -->
+  <rect x="2" y="24" width="28" height="6" rx="0 0 3 3" fill="#cb2d3e"/>
+  <!-- Match stick -->
+  <rect x="14.5" y="3" width="3" height="19" rx="1.5" fill="#c4a882"/>
+  <!-- Match head — red -->
+  <ellipse cx="16" cy="4" rx="3.5" ry="4" fill="url(#flame)"/>
+</svg>

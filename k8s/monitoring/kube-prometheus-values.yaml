@@ -41,6 +41,13 @@ grafana:
     limits:
       memory: "384Mi"
       cpu: "250m"
+  # Allow embedding Grafana in SOC Command Center iframes
+  grafana.ini:
+    security:
+      allow_embedding: true
+    auth.anonymous:
+      enabled: true
+      org_role: Viewer
   # Admin credentials — password from K8s Secret (never hardcoded)
   adminUser: admin
   admin:
