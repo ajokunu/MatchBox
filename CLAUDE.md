@@ -31,8 +31,7 @@ Mac Mini M4 with 16GB RAM. Slim configuration with phased startup:
 
 ## Dashboard Integration
 SOC content is integrated into the MatchBox dashboard at `http://localhost:3099`:
-- **5 tabs**: Overview, Architecture, Components, MCP Servers, Blog
-- **Blog tab**: Medium-style article about building the SOC on 16GB
+- **4 tabs**: Overview, Architecture, Components, MCP Servers
 - Standalone version: `public/index.html`
 - Integrated source: `../ServiceMonitor/public/index.html`
 

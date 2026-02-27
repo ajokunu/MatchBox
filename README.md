@@ -87,7 +87,6 @@ The SOC is integrated into the MatchBox dashboard at `http://localhost:3099`:
 - **Architecture** — Data flow pipelines, port reference, namespace map, design decisions
 - **Components** — Detailed config for Wazuh, OpenCTI, TheHive, shared infra, monitoring
 - **MCP Servers** — Tool tables, env vars, usage examples for all 21 MCP tools
-- **Blog** — Medium-style article about building a SOC on 16GB
 
 A standalone version is also available at `public/index.html`.
 
