@@ -35,9 +35,19 @@ spec:
       labels:
         app.kubernetes.io/name: opencti
     spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
       containers:
         - name: opencti
           image: opencti/platform:6.6.6
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop: ["ALL"]
           ports:
             - containerPort: 4000
               name: http
@@ -161,9 +171,19 @@ spec:
       labels:
         app.kubernetes.io/name: opencti-worker
     spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
       containers:
         - name: worker
           image: opencti/worker:6.6.6
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop: ["ALL"]
           resources:
             requests:
               memory: "256Mi"

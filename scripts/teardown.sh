@@ -59,7 +59,7 @@ teardown_opencti() {
   echo "[opencti] Removing OpenCTI..."
   kubectl delete -f "$K8S_DIR/opencti/connectors/" --ignore-not-found
   helm uninstall opencti -n opencti 2>/dev/null || true
-  kubectl delete secret opencti-secrets -n opencti --ignore-not-found
+  kubectl delete secret soc-opencti-secrets -n opencti --ignore-not-found
 }
 
 teardown_thehive() {

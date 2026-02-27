@@ -20,9 +20,17 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 
-const THEHIVE_URL = process.env.THEHIVE_URL || "http://localhost:9000";
-const THEHIVE_API_KEY = process.env.THEHIVE_API_KEY || "";
+const THEHIVE_URL = process.env.THEHIVE_URL || "https://localhost:9000";
+const THEHIVE_API_KEY = process.env.THEHIVE_API_KEY;
+
+if (!THEHIVE_API_KEY) {
+  console.error("FATAL: THEHIVE_API_KEY environment variable is required");
+  process.exit(1);
+}
+
 const REQUEST_TIMEOUT_MS = 10_000;
+/** Validate ID parameters to prevent path traversal */
+const safeId = z.string().regex(/^[~a-zA-Z0-9_.-]+$/, "Invalid ID format");
 
 /** Make authenticated API call to TheHive with timeout */
 async function thehiveApi(
@@ -34,7 +42,8 @@ async function thehiveApi(
   const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
   try {
-    const resp = await fetch(`${THEHIVE_URL}${path}`, {
+    const url = new URL(path, THEHIVE_URL);
+    const resp = await fetch(url.toString(), {
       method,
       headers: {
         Authorization: `Bearer ${THEHIVE_API_KEY}`,
@@ -45,7 +54,7 @@ async function thehiveApi(
     });
 
     if (!resp.ok) {
-      const text = await resp.text();
+      const text = (await resp.text()).slice(0, 200);
       throw new Error(`TheHive API error: ${resp.status} ${text}`);
     }
     return resp.json();
@@ -66,7 +75,7 @@ server.tool(
   {
     status: z.enum(["Open", "Resolved", "Deleted"]).optional().default("Open"),
     severity: z.number().min(1).max(4).optional().describe("1=Low, 2=Medium, 3=High, 4=Critical"),
-    limit: z.number().optional().default(20),
+    limit: z.number().min(1).max(100).optional().default(20),
   },
   async ({ status, severity, limit }) => {
     const query: Record<string, unknown>[] = [];
@@ -85,8 +94,8 @@ server.tool(
   "create-case",
   "Create a new TheHive incident case",
   {
-    title: z.string().describe("Case title"),
-    description: z.string().describe("Case description (markdown supported)"),
+    title: z.string().max(500).describe("Case title"),
+    description: z.string().max(10000).describe("Case description (markdown supported)"),
     severity: z.number().min(1).max(4).default(2).describe("1=Low, 2=Medium, 3=High, 4=Critical"),
     tags: z.array(z.string()).optional().default([]),
   },
@@ -108,9 +117,9 @@ server.tool(
 server.tool(
   "get-case",
   "Get TheHive case details including observables and tasks",
-  { case_id: z.string().describe("Case ID (e.g., '~123')") },
+  { case_id: safeId.describe("Case ID (e.g., '~123')") },
   async ({ case_id }) => {
-    const caseData = await thehiveApi("GET", `/api/v1/case/${case_id}`);
+    const caseData = await thehiveApi("GET", `/api/v1/case/${encodeURIComponent(case_id)}`);
     // Also fetch observables for this case
     const observables = await thehiveApi("POST", "/api/v1/query", {
       query: [
@@ -133,14 +142,14 @@ server.tool(
   "add-observable",
   "Add an observable (IOC) to a TheHive case",
   {
-    case_id: z.string().describe("Case ID"),
+    case_id: safeId.describe("Case ID"),
     data_type: z.enum(["ip", "domain", "url", "hash", "filename", "mail", "other"]),
-    data: z.string().describe("Observable value (e.g., IP address, domain name)"),
-    tags: z.array(z.string()).optional().default([]),
-    message: z.string().optional().describe("Context about this observable"),
+    data: z.string().max(2048).describe("Observable value (e.g., IP address, domain name)"),
+    tags: z.array(z.string().max(100)).max(20).optional().default([]),
+    message: z.string().max(2048).optional().describe("Context about this observable"),
   },
   async ({ case_id, data_type, data, tags, message }) => {
-    const result = await thehiveApi("POST", `/api/v1/case/${case_id}/observable`, {
+    const result = await thehiveApi("POST", `/api/v1/case/${encodeURIComponent(case_id)}/observable`, {
       dataType: data_type,
       data,
       tags,
@@ -158,8 +167,8 @@ server.tool(
   "run-analyzer",
   "Run a Cortex analyzer on a TheHive observable",
   {
-    observable_id: z.string().describe("Observable ID"),
-    analyzer_id: z.string().describe("Cortex analyzer ID (e.g., 'VirusTotal_GetReport_3_1')"),
+    observable_id: safeId.describe("Observable ID"),
+    analyzer_id: safeId.describe("Cortex analyzer ID (e.g., 'VirusTotal_GetReport_3_1')"),
   },
   async ({ observable_id, analyzer_id }) => {
     const result = await thehiveApi("POST", "/api/v1/connector/cortex/job", {
@@ -174,9 +183,9 @@ server.tool(
 server.tool(
   "get-analyzer-report",
   "Get the results of a Cortex analyzer job",
-  { job_id: z.string().describe("Cortex job ID") },
+  { job_id: safeId.describe("Cortex job ID") },
   async ({ job_id }) => {
-    const result = await thehiveApi("GET", `/api/v1/connector/cortex/job/${job_id}`);
+    const result = await thehiveApi("GET", `/api/v1/connector/cortex/job/${encodeURIComponent(job_id)}`);
     return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
   }
 );
@@ -186,9 +195,9 @@ server.tool(
   "search-alerts",
   "Search TheHive alerts (e.g., from Wazuh integration)",
   {
-    source: z.string().optional().describe("Alert source filter (e.g., 'Wazuh')"),
+    source: z.string().max(256).optional().describe("Alert source filter (e.g., 'Wazuh')"),
     severity: z.number().min(1).max(4).optional(),
-    limit: z.number().optional().default(20),
+    limit: z.number().min(1).max(100).optional().default(20),
   },
   async ({ source, severity, limit }) => {
     const query: Record<string, unknown>[] = [];
@@ -207,8 +216,8 @@ server.tool(
   "merge-alerts",
   "Merge related TheHive alerts into a single case",
   {
-    alert_ids: z.array(z.string()).describe("Alert IDs to merge"),
-    case_id: z.string().optional().describe("Existing case ID to merge into (creates new if omitted)"),
+    alert_ids: z.array(safeId).describe("Alert IDs to merge"),
+    case_id: safeId.optional().describe("Existing case ID to merge into (creates new if omitted)"),
   },
   async ({ alert_ids, case_id }) => {
     const result = await thehiveApi("POST", "/api/v1/alert/merge", {

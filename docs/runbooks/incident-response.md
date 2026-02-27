@@ -129,7 +129,7 @@ If the incident revealed a gap in detection:
 # Edit custom rules
 kubectl edit configmap wazuh-custom-rules -n wazuh
 # Restart manager to reload
-kubectl rollout restart deployment wazuh-manager -n wazuh
+kubectl rollout restart statefulset wazuh-manager -n wazuh
 ```
 
 ### Update Threat Intel:

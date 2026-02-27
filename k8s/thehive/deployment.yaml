@@ -37,9 +37,19 @@ spec:
       labels:
         app.kubernetes.io/name: thehive
     spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
       containers:
         - name: thehive
           image: strangebee/thehive:5.4
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop: ["ALL"]
           ports:
             - containerPort: 9000
               name: http

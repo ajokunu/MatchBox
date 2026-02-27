@@ -20,10 +20,17 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 
 const WAZUH_URL = process.env.WAZUH_API_URL || "https://localhost:55000";
-const WAZUH_USER = process.env.WAZUH_API_USER || "wazuh-wui";
-const WAZUH_PASS = process.env.WAZUH_API_PASSWORD || "";
+const WAZUH_USER = process.env.WAZUH_API_USER;
+const WAZUH_PASS = process.env.WAZUH_API_PASSWORD;
+
+if (!WAZUH_USER || !WAZUH_PASS) {
+  console.error("FATAL: WAZUH_API_USER and WAZUH_API_PASSWORD environment variables are required");
+  process.exit(1);
+}
 
 const REQUEST_TIMEOUT_MS = 10_000;
+/** Validate ID parameters to prevent path traversal */
+const safeId = z.string().regex(/^[a-zA-Z0-9_.~-]+$/, "Invalid ID format");
 let jwtToken: string | null = null;
 let tokenExpiry = 0;
 
@@ -87,10 +94,10 @@ server.tool(
   "list-alerts",
   "List recent Wazuh SIEM alerts with optional filtering",
   {
-    limit: z.number().optional().default(20).describe("Max alerts to return"),
-    level_min: z.number().optional().describe("Minimum alert level (1-15)"),
-    agent_id: z.string().optional().describe("Filter by agent ID"),
-    rule_id: z.string().optional().describe("Filter by rule ID"),
+    limit: z.number().min(1).max(100).optional().default(20).describe("Max alerts to return"),
+    level_min: z.number().min(1).max(15).optional().describe("Minimum alert level (1-15)"),
+    agent_id: z.string().regex(/^[a-zA-Z0-9_.~-]*$/).optional().describe("Filter by agent ID"),
+    rule_id: z.string().regex(/^[a-zA-Z0-9_.~-]*$/).optional().describe("Filter by rule ID"),
   },
   async ({ limit, level_min, agent_id, rule_id }) => {
     const params: Record<string, string> = {
@@ -110,9 +117,9 @@ server.tool(
 server.tool(
   "get-alert",
   "Get full details of a specific Wazuh alert",
-  { alert_id: z.string().describe("Alert ID to retrieve") },
+  { alert_id: safeId.describe("Alert ID to retrieve") },
   async ({ alert_id }) => {
-    const result = await wazuhApi(`/alerts/${alert_id}`);
+    const result = await wazuhApi(`/alerts/${encodeURIComponent(alert_id)}`);
     return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
   }
 );
@@ -122,10 +129,10 @@ server.tool(
   "search-agents",
   "Search registered Wazuh agents by name, IP, status, or OS",
   {
-    name: z.string().optional().describe("Agent name filter"),
-    ip: z.string().optional().describe("Agent IP filter"),
+    name: z.string().max(256).optional().describe("Agent name filter"),
+    ip: z.string().max(45).optional().describe("Agent IP filter"),
     status: z.enum(["active", "disconnected", "pending", "never_connected"]).optional(),
-    limit: z.number().optional().default(20),
+    limit: z.number().min(1).max(100).optional().default(20),
   },
   async ({ name, ip, status, limit }) => {
     const params: Record<string, string> = { limit: String(limit) };
@@ -142,9 +149,9 @@ server.tool(
 server.tool(
   "get-agent-info",
   "Get detailed info about a specific Wazuh agent",
-  { agent_id: z.string().describe("Agent ID") },
+  { agent_id: safeId.describe("Agent ID") },
   async ({ agent_id }) => {
-    const result = await wazuhApi(`/agents/${agent_id}`);
+    const result = await wazuhApi(`/agents/${encodeURIComponent(agent_id)}`);
     return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
   }
 );
@@ -154,15 +161,15 @@ server.tool(
   "get-vulnerabilities",
   "List vulnerabilities detected on an agent",
   {
-    agent_id: z.string().describe("Agent ID"),
+    agent_id: safeId.describe("Agent ID"),
     severity: z.enum(["Critical", "High", "Medium", "Low"]).optional(),
-    limit: z.number().optional().default(20),
+    limit: z.number().min(1).max(100).optional().default(20),
   },
   async ({ agent_id, severity, limit }) => {
     const params: Record<string, string> = { limit: String(limit) };
     if (severity) params["severity"] = severity;
 
-    const result = await wazuhApi(`/vulnerability/${agent_id}`, params);
+    const result = await wazuhApi(`/vulnerability/${encodeURIComponent(agent_id)}`, params);
     return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
   }
 );
@@ -172,10 +179,10 @@ server.tool(
   "get-rules",
   "Search active Wazuh detection rules",
   {
-    search: z.string().optional().describe("Search text in rule descriptions"),
-    level: z.number().optional().describe("Filter by exact rule level"),
-    group: z.string().optional().describe("Filter by rule group"),
-    limit: z.number().optional().default(20),
+    search: z.string().max(256).optional().describe("Search text in rule descriptions"),
+    level: z.number().min(1).max(15).optional().describe("Filter by exact rule level"),
+    group: z.string().max(256).optional().describe("Filter by rule group"),
+    limit: z.number().min(1).max(100).optional().default(20),
   },
   async ({ search, level, group, limit }) => {
     const params: Record<string, string> = { limit: String(limit) };
@@ -193,8 +200,8 @@ server.tool(
   "get-decoders",
   "Search active Wazuh log decoders",
   {
-    search: z.string().optional().describe("Search text in decoder names"),
-    limit: z.number().optional().default(20),
+    search: z.string().max(256).optional().describe("Search text in decoder names"),
+    limit: z.number().min(1).max(100).optional().default(20),
   },
   async ({ search, limit }) => {
     const params: Record<string, string> = { limit: String(limit) };

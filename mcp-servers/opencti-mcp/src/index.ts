@@ -18,9 +18,17 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 
-const OPENCTI_URL = process.env.OPENCTI_URL || "http://localhost:4000";
-const OPENCTI_TOKEN = process.env.OPENCTI_TOKEN || "";
+const OPENCTI_URL = process.env.OPENCTI_URL || "https://localhost:4000";
+const OPENCTI_TOKEN = process.env.OPENCTI_TOKEN;
+
+if (!OPENCTI_TOKEN) {
+  console.error("FATAL: OPENCTI_TOKEN environment variable is required");
+  process.exit(1);
+}
+
 const REQUEST_TIMEOUT_MS = 10_000;
+/** Validate ID parameters to prevent path traversal */
+const safeId = z.string().regex(/^[a-zA-Z0-9_-]+$/, "Invalid ID format");
 
 /** Execute a GraphQL query against OpenCTI with timeout */
 async function graphql(query: string, variables: Record<string, unknown> = {}): Promise<unknown> {
@@ -39,7 +47,7 @@ async function graphql(query: string, variables: Record<string, unknown> = {}): 
     });
 
     if (!resp.ok) {
-      const text = await resp.text();
+      const text = (await resp.text()).slice(0, 200);
       throw new Error(`OpenCTI API error: ${resp.status} ${text}`);
     }
 
@@ -65,7 +73,7 @@ server.tool(
   {
     value: z.string().optional().describe("Search by indicator value (IP, domain, hash, etc.)"),
     type: z.string().optional().describe("Filter by type (IPv4-Addr, Domain-Name, StixFile, Url, etc.)"),
-    limit: z.number().optional().default(20),
+    limit: z.number().min(1).max(100).optional().default(20),
   },
   async ({ value, type, limit }) => {
     const filters = [];
@@ -107,7 +115,7 @@ server.tool(
 server.tool(
   "get-indicator",
   "Get full details of an OpenCTI indicator including relationships",
-  { indicator_id: z.string().describe("OpenCTI entity ID") },
+  { indicator_id: safeId.describe("OpenCTI entity ID") },
   async ({ indicator_id }) => {
     const result = await graphql(
       `query GetIndicator($id: String!) {
@@ -154,8 +162,8 @@ server.tool(
   "search-reports",
   "Search OpenCTI threat intelligence reports",
   {
-    search: z.string().optional().describe("Search text in report names/descriptions"),
-    limit: z.number().optional().default(10),
+    search: z.string().max(256).optional().describe("Search text in report names/descriptions"),
+    limit: z.number().min(1).max(100).optional().default(10),
   },
   async ({ search, limit }) => {
     const result = await graphql(
@@ -188,9 +196,9 @@ server.tool(
   "get-attack-patterns",
   "List MITRE ATT&CK techniques, optionally filtered by tactic",
   {
-    search: z.string().optional().describe("Search text (e.g., 'phishing', 'lateral movement')"),
-    tactic: z.string().optional().describe("Filter by kill chain phase (e.g., 'initial-access', 'lateral-movement')"),
-    limit: z.number().optional().default(20),
+    search: z.string().max(256).optional().describe("Search text (e.g., 'phishing', 'lateral movement')"),
+    tactic: z.string().max(256).optional().describe("Filter by kill chain phase (e.g., 'initial-access', 'lateral-movement')"),
+    limit: z.number().min(1).max(100).optional().default(20),
   },
   async ({ search, tactic, limit }) => {
     const result = await graphql(
@@ -223,8 +231,8 @@ server.tool(
   "enrich-observable",
   "Request enrichment for an observable in OpenCTI",
   {
-    observable_id: z.string().describe("Observable entity ID to enrich"),
-    connector_id: z.string().optional().describe("Specific connector ID to use"),
+    observable_id: safeId.describe("Observable entity ID to enrich"),
+    connector_id: safeId.optional().describe("Specific connector ID to use"),
   },
   async ({ observable_id, connector_id }) => {
     const result = await graphql(
@@ -248,9 +256,9 @@ server.tool(
   "get-relationships",
   "Get relationships for an OpenCTI entity",
   {
-    entity_id: z.string().describe("Entity ID to get relationships for"),
-    relationship_type: z.string().optional().describe("Filter by type (e.g., 'uses', 'targets', 'indicates')"),
-    limit: z.number().optional().default(20),
+    entity_id: safeId.describe("Entity ID to get relationships for"),
+    relationship_type: z.string().max(100).optional().describe("Filter by type (e.g., 'uses', 'targets', 'indicates')"),
+    limit: z.number().min(1).max(100).optional().default(20),
   },
   async ({ entity_id, relationship_type, limit }) => {
     const result = await graphql(
