@@ -52,17 +52,28 @@ grafana:
     enabled: true
     size: "2Gi"
     storageClassName: "local-path"
+  # Skip init-chown-data — PVC already has correct ownership from initial install
+  initChownData:
+    enabled: false
+  # Inject OpenSearch password from K8s Secret as env var for datasource provisioning
+  envFromSecrets:
+    - name: opensearch-grafana-auth
   # Data sources — add OpenSearch for Wazuh dashboards
   additionalDataSources:
     - name: OpenSearch-Wazuh
       type: elasticsearch
-      url: http://opensearch-cluster-master.shared.svc.cluster.local:9200
+      url: https://opensearch-cluster-master.shared.svc.cluster.local:9200
       database: "wazuh-alerts-*"
+      basicAuth: true
+      basicAuthUser: admin
       jsonData:
         timeField: "timestamp"
         esVersion: "2.11.0"  # OpenSearch version
         logMessageField: "full_log"
         logLevelField: "rule.level"
+        tlsSkipVerify: true
+      secureJsonData:
+        basicAuthPassword: "$__env{OPENSEARCH_PASSWORD}"
   # Pre-provision Wazuh community dashboards
   dashboardProviders:
     dashboardproviders.yaml:
