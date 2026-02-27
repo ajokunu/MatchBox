@@ -53,12 +53,22 @@ async function graphql(query: string, variables: Record<string, unknown> = {}): 
 
     const result = await resp.json() as { data: unknown; errors?: unknown[] };
     if (result.errors) {
-      throw new Error(`GraphQL errors: ${JSON.stringify(result.errors)}`);
+      throw new Error(`GraphQL errors: ${JSON.stringify(result.errors).slice(0, 500)}`);
     }
     return result.data;
   } finally {
     clearTimeout(timer);
   }
+}
+
+/** Maximum response size in characters to prevent excessive output to LLM */
+const MAX_RESPONSE_CHARS = 50_000;
+
+/** Serialize data to JSON and truncate if it exceeds the size limit */
+function formatResponse(data: unknown): string {
+  const json = JSON.stringify(data, null, 2);
+  if (json.length <= MAX_RESPONSE_CHARS) return json;
+  return json.slice(0, MAX_RESPONSE_CHARS) + `\n... [truncated: ${json.length} chars total, showing first ${MAX_RESPONSE_CHARS}]`;
 }
 
 const server = new McpServer({
@@ -107,7 +117,7 @@ server.tool(
           : null,
       }
     );
-    return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+    return { content: [{ type: "text" as const, text: formatResponse(result) }] };
   }
 );
 
@@ -153,7 +163,7 @@ server.tool(
       }`,
       { id: indicator_id }
     );
-    return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+    return { content: [{ type: "text" as const, text: formatResponse(result) }] };
   }
 );
 
@@ -187,7 +197,7 @@ server.tool(
       }`,
       { search: search || null, first: limit }
     );
-    return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+    return { content: [{ type: "text" as const, text: formatResponse(result) }] };
   }
 );
 
@@ -222,14 +232,14 @@ server.tool(
       }`,
       { search: search || tactic || null, first: limit }
     );
-    return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+    return { content: [{ type: "text" as const, text: formatResponse(result) }] };
   }
 );
 
 // enrich-observable
 server.tool(
   "enrich-observable",
-  "Request enrichment for an observable in OpenCTI",
+  "[WRITE] Request enrichment for an observable in OpenCTI. This triggers external connector queries.",
   {
     observable_id: safeId.describe("Observable entity ID to enrich"),
     connector_id: safeId.optional().describe("Specific connector ID to use"),
@@ -247,7 +257,7 @@ server.tool(
       }`,
       { id: observable_id, connectorId: connector_id || null }
     );
-    return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+    return { content: [{ type: "text" as const, text: formatResponse(result) }] };
   }
 );
 
@@ -297,7 +307,7 @@ server.tool(
         first: limit,
       }
     );
-    return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+    return { content: [{ type: "text" as const, text: formatResponse(result) }] };
   }
 );
 

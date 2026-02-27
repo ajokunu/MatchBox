@@ -83,6 +83,16 @@ async function wazuhApi(path: string, params: Record<string, string> = {}): Prom
   }
 }
 
+/** Maximum response size in characters to prevent excessive output to LLM */
+const MAX_RESPONSE_CHARS = 50_000;
+
+/** Serialize data to JSON and truncate if it exceeds the size limit */
+function formatResponse(data: unknown): string {
+  const json = JSON.stringify(data, null, 2);
+  if (json.length <= MAX_RESPONSE_CHARS) return json;
+  return json.slice(0, MAX_RESPONSE_CHARS) + `\n... [truncated: ${json.length} chars total, showing first ${MAX_RESPONSE_CHARS}]`;
+}
+
 // --- MCP Server Setup ---
 const server = new McpServer({
   name: "wazuh-mcp",
@@ -109,7 +119,7 @@ server.tool(
     if (rule_id) params["rule.id"] = rule_id;
 
     const result = await wazuhApi("/alerts", params);
-    return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+    return { content: [{ type: "text" as const, text: formatResponse(result) }] };
   }
 );
 
@@ -120,7 +130,7 @@ server.tool(
   { alert_id: safeId.describe("Alert ID to retrieve") },
   async ({ alert_id }) => {
     const result = await wazuhApi(`/alerts/${encodeURIComponent(alert_id)}`);
-    return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+    return { content: [{ type: "text" as const, text: formatResponse(result) }] };
   }
 );
 
@@ -141,7 +151,7 @@ server.tool(
     if (status) params["status"] = status;
 
     const result = await wazuhApi("/agents", params);
-    return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+    return { content: [{ type: "text" as const, text: formatResponse(result) }] };
   }
 );
 
@@ -152,7 +162,7 @@ server.tool(
   { agent_id: safeId.describe("Agent ID") },
   async ({ agent_id }) => {
     const result = await wazuhApi(`/agents/${encodeURIComponent(agent_id)}`);
-    return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+    return { content: [{ type: "text" as const, text: formatResponse(result) }] };
   }
 );
 
@@ -170,7 +180,7 @@ server.tool(
     if (severity) params["severity"] = severity;
 
     const result = await wazuhApi(`/vulnerability/${encodeURIComponent(agent_id)}`, params);
-    return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+    return { content: [{ type: "text" as const, text: formatResponse(result) }] };
   }
 );
 
@@ -191,7 +201,7 @@ server.tool(
     if (group) params["group"] = group;
 
     const result = await wazuhApi("/rules", params);
-    return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+    return { content: [{ type: "text" as const, text: formatResponse(result) }] };
   }
 );
 
@@ -208,7 +218,7 @@ server.tool(
     if (search) params["search"] = search;
 
     const result = await wazuhApi("/decoders", params);
-    return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+    return { content: [{ type: "text" as const, text: formatResponse(result) }] };
   }
 );
 

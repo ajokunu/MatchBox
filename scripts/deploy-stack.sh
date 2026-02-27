@@ -60,6 +60,9 @@ validate_secrets
 deploy_namespaces() {
   echo "[namespaces] Creating Kubernetes namespaces..."
   kubectl apply -f "$K8S_DIR/namespaces.yaml"
+
+  echo "[network-policies] Applying NetworkPolicies..."
+  kubectl apply -f "$K8S_DIR/network-policies.yaml"
   echo "  Done."
 }
 
