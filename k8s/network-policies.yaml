@@ -403,6 +403,7 @@ spec:
 ---
 # Allow Prometheus to scrape metrics from all namespaces
 # Applied in each namespace that has exporters
+# Ports: 9100 (node-exporter) + application-specific metrics ports
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -419,7 +420,9 @@ spec:
               kubernetes.io/metadata.name: monitoring
       ports:
         - protocol: TCP
-          port: 9100
+          port: 9100   # node-exporter
+        - protocol: TCP
+          port: 55000  # Wazuh Manager API (metrics)
 
 ---
 apiVersion: networking.k8s.io/v1
@@ -438,7 +441,11 @@ spec:
               kubernetes.io/metadata.name: monitoring
       ports:
         - protocol: TCP
-          port: 9100
+          port: 9100   # node-exporter
+        - protocol: TCP
+          port: 9000   # TheHive metrics
+        - protocol: TCP
+          port: 9001   # Cortex metrics
 
 ---
 apiVersion: networking.k8s.io/v1
@@ -457,4 +464,8 @@ spec:
               kubernetes.io/metadata.name: monitoring
       ports:
         - protocol: TCP
-          port: 9100
+          port: 9100   # node-exporter
+        - protocol: TCP
+          port: 4000   # OpenCTI metrics
+        - protocol: TCP
+          port: 14269  # OpenCTI health

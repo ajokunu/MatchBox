@@ -9,6 +9,11 @@
 #   helm repo add opensearch https://opensearch-project.github.io/helm-charts/
 #   helm install opensearch opensearch/opensearch -n shared -f opensearch.yaml
 
+# Pin to OpenSearch 2.19.1 — Wazuh 4.14.3 requires OpenSearch 2.x
+# (Wazuh Dashboard is based on OSD 2.19.4, incompatible with OS 3.x)
+image:
+  tag: "2.19.1"
+
 # Single-node mode (no replicas — home lab doesn't need HA)
 singleNode: true
 replicas: 1
@@ -47,10 +52,39 @@ extraEnvs:
         key: opensearch-password
 
 # Index lifecycle — auto-delete old indices to save disk
-# Wazuh alerts: 7-day retention
+# Wazuh alerts: 30-day retention
 # OpenCTI STIX data: 90-day retention
 # TheHive case data: no auto-delete
+# ISM policies are applied via index templates after OpenSearch starts.
+# Run scripts/setup-ism.sh or apply manually with the OpenSearch ISM API.
 extraConfig:
   opensearch.yml: |
     cluster.name: matchbox-soc
     node.name: opensearch-0
+    plugins.index_state_management.enabled: true
+
+# Health probes — detect unresponsive OpenSearch before it causes cascading failures
+startupProbe:
+  httpGet:
+    path: /_cluster/health
+    port: 9200
+    scheme: HTTPS
+  initialDelaySeconds: 30
+  periodSeconds: 10
+  failureThreshold: 30
+readinessProbe:
+  httpGet:
+    path: /_cluster/health?local=true
+    port: 9200
+    scheme: HTTPS
+  initialDelaySeconds: 10
+  periodSeconds: 15
+  failureThreshold: 3
+livenessProbe:
+  httpGet:
+    path: /_cluster/health?local=true
+    port: 9200
+    scheme: HTTPS
+  initialDelaySeconds: 60
+  periodSeconds: 30
+  failureThreshold: 5

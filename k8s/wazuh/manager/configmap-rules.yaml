@@ -1,5 +1,6 @@
 # Custom Wazuh Detection Rules
 # These rules supplement the built-in Wazuh ruleset with K8s-specific detections
+# Compatible with Wazuh 4.14.3
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -9,72 +10,44 @@ metadata:
     app: wazuh-manager
 data:
   # Kubernetes-specific detection rules
+  # These use field-based matching for JSON-decoded events
   k8s-rules.xml: |
     <group name="kubernetes,">
 
       <!-- K8s pod creation in sensitive namespace -->
       <rule id="100100" level="7">
-        <decoded_as>json</decoded_as>
-        <field name="kubernetes.namespace_name">kube-system</field>
-        <field name="kubernetes.event.reason">Created</field>
+        <if_sid>1</if_sid>
+        <field name="objectRef.namespace">^kube-system$</field>
+        <field name="verb">^create$</field>
+        <field name="objectRef.resource">^pods$</field>
         <description>Pod created in kube-system namespace</description>
         <group>kubernetes,pod_creation,</group>
       </rule>
 
       <!-- K8s failed authentication -->
       <rule id="100101" level="10">
-        <decoded_as>json</decoded_as>
-        <field name="kubernetes.audit.responseStatus.code">^401$|^403$</field>
+        <if_sid>1</if_sid>
+        <field name="responseStatus.code">^401$|^403$</field>
         <description>Kubernetes API authentication/authorization failure</description>
         <group>kubernetes,authentication_failure,</group>
       </rule>
 
-      <!-- K8s privileged container -->
-      <rule id="100102" level="12">
-        <decoded_as>json</decoded_as>
-        <field name="kubernetes.pod.spec.containers.securityContext.privileged">true</field>
-        <description>Privileged container detected in Kubernetes</description>
-        <group>kubernetes,privilege_escalation,</group>
-      </rule>
-
-      <!-- K8s exec into pod (potential interactive shell) -->
+      <!-- K8s exec into pod -->
       <rule id="100103" level="8">
-        <decoded_as>json</decoded_as>
-        <field name="kubernetes.audit.verb">create</field>
-        <field name="kubernetes.audit.objectRef.subresource">exec</field>
+        <if_sid>1</if_sid>
+        <field name="verb">^create$</field>
+        <field name="objectRef.subresource">^exec$</field>
         <description>kubectl exec detected - interactive shell access to pod</description>
-        <group>kubernetes,exec,lateral_movement,</group>
+        <group>kubernetes,exec,</group>
       </rule>
 
       <!-- K8s secret access -->
       <rule id="100104" level="7">
-        <decoded_as>json</decoded_as>
-        <field name="kubernetes.audit.verb">get|list</field>
-        <field name="kubernetes.audit.objectRef.resource">secrets</field>
+        <if_sid>1</if_sid>
+        <field name="verb">^get$|^list$</field>
+        <field name="objectRef.resource">^secrets$</field>
         <description>Kubernetes Secret accessed</description>
         <group>kubernetes,secret_access,</group>
-      </rule>
-
-    </group>
-
-  # SSH brute force detection rules (enhanced)
-  ssh-rules.xml: |
-    <group name="sshd,custom_ssh,">
-
-      <!-- Multiple failed SSH login attempts from same source -->
-      <rule id="100200" level="10" frequency="5" timeframe="120">
-        <if_matched_sid>5716</if_matched_sid>
-        <same_source_ip />
-        <description>SSH brute force attack: 5+ failed logins in 2 minutes from $(srcip)</description>
-        <group>authentication_failures,brute_force,</group>
-      </rule>
-
-      <!-- Successful SSH login after multiple failures -->
-      <rule id="100201" level="12">
-        <if_matched_sid>100200</if_matched_sid>
-        <field name="srcip">\.+</field>
-        <description>Possible SSH brute force success: login after multiple failures from $(srcip)</description>
-        <group>authentication_success,brute_force,</group>
       </rule>
 
     </group>
@@ -85,7 +58,7 @@ data:
 
       <!-- Cryptocurrency miner detection -->
       <rule id="100300" level="12">
-        <decoded_as>json</decoded_as>
+        <if_sid>1</if_sid>
         <match>xmrig|minerd|cgminer|cpuminer|stratum+tcp</match>
         <description>Possible cryptocurrency miner detected</description>
         <group>malware,miner,</group>
@@ -93,18 +66,34 @@ data:
 
       <!-- Reverse shell detection -->
       <rule id="100301" level="14">
-        <decoded_as>json</decoded_as>
-        <match>bash -i >& /dev/tcp|nc -e /bin/sh|python -c.*socket.*connect</match>
+        <if_sid>1</if_sid>
+        <match>bash -i >& /dev/tcp|nc -e /bin/sh</match>
         <description>Possible reverse shell command detected</description>
         <group>malware,reverse_shell,</group>
       </rule>
 
       <!-- Suspicious download tools -->
       <rule id="100302" level="8">
-        <decoded_as>json</decoded_as>
-        <match>wget.*\|.*sh|curl.*\|.*bash|wget.*-O-.*\|</match>
+        <if_sid>1</if_sid>
+        <match>wget|curl</match>
+        <match>|sh|bash</match>
         <description>Download and execute pattern detected</description>
         <group>suspicious_commands,download_exec,</group>
+      </rule>
+
+    </group>
+
+  # SSH brute force detection rules
+  ssh-rules.xml: |
+    <group name="sshd,custom_ssh,">
+
+      <!-- SSH brute force attack detection -->
+      <!-- Uses built-in Wazuh SSH failure rules as base -->
+      <rule id="100200" level="10" frequency="5" timeframe="120">
+        <if_matched_group>authentication_failed</if_matched_group>
+        <same_source_ip />
+        <description>SSH brute force attack: 5+ failed logins in 2 minutes</description>
+        <group>authentication_failures,brute_force,</group>
       </rule>
 
     </group>

@@ -28,38 +28,61 @@ if (!WAZUH_USER || !WAZUH_PASS) {
   process.exit(1);
 }
 
-const REQUEST_TIMEOUT_MS = 10_000;
-/** Validate ID parameters to prevent path traversal */
+const REQUEST_TIMEOUT_MS = parseInt(process.env.REQUEST_TIMEOUT_MS || "10000", 10);
+const TOKEN_TTL_MS = parseInt(process.env.TOKEN_TTL_MS || "850000", 10);
+/** Validate ID parameters to prevent path traversal (+ requires at least 1 char) */
 const safeId = z.string().regex(/^[a-zA-Z0-9_.~-]+$/, "Invalid ID format");
 let jwtToken: string | null = null;
 let tokenExpiry = 0;
+
+/** Retry-eligible HTTP status codes */
+const RETRYABLE_CODES = new Set([429, 503]);
+
+/** Fetch with single retry on transient failures (429/503/timeout) */
+async function fetchWithRetry(url: string, opts: RequestInit, timeoutMs = REQUEST_TIMEOUT_MS): Promise<Response> {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const resp = await fetch(url, { ...opts, signal: controller.signal });
+      if (attempt === 0 && RETRYABLE_CODES.has(resp.status)) {
+        console.error(`Retrying ${url} after ${resp.status}...`);
+        await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
+        continue;
+      }
+      return resp;
+    } catch (err: unknown) {
+      if (attempt === 0 && err instanceof Error && err.name === "AbortError") {
+        console.error(`Retrying ${url} after timeout...`);
+        await new Promise((r) => setTimeout(r, 1000));
+        continue;
+      }
+      throw err;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+  throw new Error(`Request to ${url} failed after retries`);
+}
 
 /** Authenticate and get JWT token */
 async function getToken(): Promise<string> {
   if (jwtToken && Date.now() < tokenExpiry) return jwtToken;
 
   const credentials = Buffer.from(`${WAZUH_USER}:${WAZUH_PASS}`).toString("base64");
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const resp = await fetchWithRetry(`${WAZUH_URL}/security/user/authenticate`, {
+    method: "POST",
+    headers: { Authorization: `Basic ${credentials}` },
+  });
 
-  try {
-    const resp = await fetch(`${WAZUH_URL}/security/user/authenticate`, {
-      method: "POST",
-      headers: { Authorization: `Basic ${credentials}` },
-      signal: controller.signal,
-    });
-
-    if (!resp.ok) throw new Error(`Auth failed: ${resp.status} ${resp.statusText}`);
-    const data = await resp.json() as { data: { token: string } };
-    jwtToken = data.data.token;
-    tokenExpiry = Date.now() + 850_000; // Token expires in ~900s, refresh at 850s
-    return jwtToken;
-  } finally {
-    clearTimeout(timer);
-  }
+  if (!resp.ok) throw new Error(`Auth failed: ${resp.status} ${resp.statusText}`);
+  const data = await resp.json() as { data: { token: string } };
+  jwtToken = data.data.token;
+  tokenExpiry = Date.now() + TOKEN_TTL_MS;
+  return jwtToken;
 }
 
-/** Make authenticated API call with timeout */
+/** Make authenticated API call with timeout and retry */
 async function wazuhApi(path: string, params: Record<string, string> = {}): Promise<unknown> {
   const token = await getToken();
   const url = new URL(path, WAZUH_URL);
@@ -67,24 +90,16 @@ async function wazuhApi(path: string, params: Record<string, string> = {}): Prom
     if (v) url.searchParams.set(k, v);
   }
 
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const resp = await fetchWithRetry(url.toString(), {
+    headers: { Authorization: `Bearer ${token}` },
+  });
 
-  try {
-    const resp = await fetch(url.toString(), {
-      headers: { Authorization: `Bearer ${token}` },
-      signal: controller.signal,
-    });
-
-    if (!resp.ok) throw new Error(`Wazuh API error: ${resp.status} ${resp.statusText}`);
-    return resp.json();
-  } finally {
-    clearTimeout(timer);
-  }
+  if (!resp.ok) throw new Error(`Wazuh API error: ${resp.status} ${resp.statusText}`);
+  return resp.json();
 }
 
 /** Maximum response size in characters to prevent excessive output to LLM */
-const MAX_RESPONSE_CHARS = 50_000;
+const MAX_RESPONSE_CHARS = parseInt(process.env.MAX_RESPONSE_CHARS || "50000", 10);
 
 /** Serialize data to JSON and truncate if it exceeds the size limit */
 function formatResponse(data: unknown): string {

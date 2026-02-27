@@ -26,7 +26,7 @@ opencti:
     OPENCTI_ADMIN_TOKEN: ""  # Auto-generated, retrieve after first boot
 
     # Shared infrastructure connections
-    ELASTICSEARCH__URL: "http://opensearch.shared.svc.cluster.local:9200"
+    ELASTICSEARCH__URL: "http://opensearch-cluster-master.shared.svc.cluster.local:9200"
     REDIS__HOSTNAME: "redis-master.shared.svc.cluster.local"
     REDIS__PORT: "6379"
     RABBITMQ__HOSTNAME: "rabbitmq.shared.svc.cluster.local"

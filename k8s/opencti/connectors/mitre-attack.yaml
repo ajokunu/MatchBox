@@ -13,8 +13,14 @@ metadata:
     connector: mitre-attack
 spec:
   schedule: "0 3 * * 0"  # Weekly: Sunday at 3 AM
+  concurrencyPolicy: Forbid          # Never run two imports simultaneously
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
   jobTemplate:
     spec:
+      backoffLimit: 2                   # Max 2 retries on failure
+      activeDeadlineSeconds: 7200       # Kill after 2 hours (MITRE data is large)
+      ttlSecondsAfterFinished: 3600     # Clean up completed pods after 1 hour
       template:
         spec:
           restartPolicy: Never
