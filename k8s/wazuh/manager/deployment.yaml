@@ -6,10 +6,10 @@ metadata:
   name: wazuh-manager
   namespace: wazuh
   labels:
-    app: wazuh-manager
+    app.kubernetes.io/name: wazuh-manager
 spec:
   selector:
-    app: wazuh-manager
+    app.kubernetes.io/name: wazuh-manager
   ports:
     - name: agent-events
       port: 1514
@@ -28,17 +28,17 @@ metadata:
   name: wazuh-manager
   namespace: wazuh
   labels:
-    app: wazuh-manager
+    app.kubernetes.io/name: wazuh-manager
 spec:
   serviceName: wazuh-manager
   replicas: 1
   selector:
     matchLabels:
-      app: wazuh-manager
+      app.kubernetes.io/name: wazuh-manager
   template:
     metadata:
       labels:
-        app: wazuh-manager
+        app.kubernetes.io/name: wazuh-manager
     spec:
       automountServiceAccountToken: false
       # InitContainer copies default /var/ossec/etc/ from the image to an emptyDir,
@@ -92,7 +92,9 @@ spec:
                   key: opensearch-password
                   optional: true
             - name: FILEBEAT_SSL_VERIFICATION_MODE
-              value: "none"
+              value: "certificate"
+            - name: FILEBEAT_SSL_CERTIFICATE_AUTHORITIES
+              value: "/etc/ssl/opensearch/ca.crt"
           volumeMounts:
             - name: data
               mountPath: /var/ossec/data

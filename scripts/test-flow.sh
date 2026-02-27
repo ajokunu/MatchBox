@@ -63,13 +63,13 @@ echo "[2/8] Shared Infrastructure"
 check "OpenSearch pod ready" pod_running shared "app.kubernetes.io/name=opensearch"
 check "Redis pod ready" pod_running shared "app.kubernetes.io/name=redis"
 check "RabbitMQ pod ready" pod_running shared "app.kubernetes.io/name=rabbitmq"
-check "MinIO pod ready" pod_running shared "app=minio"
+check "MinIO pod ready" pod_running shared "app=minio"  # Helm chart uses app: label
 echo ""
 
 # 3. Wazuh
 echo "[3/8] Wazuh SIEM/XDR"
-check "Wazuh Manager running" pod_running wazuh "app=wazuh-manager"
-check "Wazuh Dashboard running" pod_running wazuh "app=wazuh-dashboard"
+check "Wazuh Manager running" pod_running wazuh "app.kubernetes.io/name=wazuh-manager"
+check "Wazuh Dashboard running" pod_running wazuh "app.kubernetes.io/name=wazuh-dashboard"
 check "Wazuh Agent DaemonSet" sh -c "kubectl get daemonset -n wazuh wazuh-agent -o jsonpath='{.status.numberReady}' 2>/dev/null | grep -qE '[1-9]'"
 check "Wazuh ConfigMaps exist" kubectl get configmap -n wazuh wazuh-manager-config
 check "Wazuh custom rules exist" kubectl get configmap -n wazuh wazuh-custom-rules
@@ -115,6 +115,7 @@ check "Wazuh Manager API responds" sh -c "kubectl exec -n wazuh wazuh-manager-0 
 check "TheHive API responds" sh -c "kubectl exec -n thehive thehive-0 -- curl -sk http://localhost:9000/api/status 2>/dev/null | grep -q version"
 check "Cortex API responds" sh -c "kubectl exec -n thehive cortex-0 -- curl -sk http://localhost:9001/api/status 2>/dev/null | grep -q versions"
 check "Grafana API responds" sh -c "kubectl exec -n monitoring \$(kubectl get pods -n monitoring -l app.kubernetes.io/name=grafana -o jsonpath='{.items[0].metadata.name}') -c grafana -- curl -s http://localhost:3000/api/health 2>/dev/null | grep -q ok"
+check "OpenCTI API responds" sh -c "kubectl exec -n opencti \$(kubectl get pods -n opencti -l app.kubernetes.io/name=opencti -o jsonpath='{.items[0].metadata.name}') -- curl -s http://localhost:4000/health 2>/dev/null | grep -qE 'ok|alive'"
 echo ""
 
 # Summary

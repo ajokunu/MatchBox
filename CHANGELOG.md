@@ -3,6 +3,31 @@
 All notable changes to MatchBox are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioned with [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] — 2026-02-27
+
+Security hardening + code quality fixes across 7 issues from code review.
+
+### Fixed
+- **Redis Helm values duplicate `master:` key** — Second block silently overwrote the first, dropping resource limits and persistence config. Merged into single block.
+- **TLS verification disabled** — OpenCTI (`REJECT_UNAUTHORIZED: false`, `NODE_TLS_REJECT_UNAUTHORIZED: 0`) and Wazuh Manager (`FILEBEAT_SSL_VERIFICATION_MODE: none`) now use proper CA certificate verification via ConfigMap-mounted CA cert
+
+### Added
+- **Egress NetworkPolicies** — Default-deny egress + explicit allow rules for all 5 namespaces: DNS (UDP 53), internal pod-to-pod, cross-namespace service access, and HTTPS (443) for connectors/analyzers. 10 new policies.
+- **OpenSearch CA cert ConfigMap** (`k8s/shared/opensearch-ca-cert.yaml`) — Distributes CA cert to opencti and wazuh namespaces for TLS verification
+- **`@matchbox/mcp-shared` package** (`mcp-servers/shared/`) — Extracted `fetchWithRetry()`, `formatResponse()`, `RETRYABLE_CODES`, `REQUEST_TIMEOUT_MS`, `MAX_RESPONSE_CHARS` into shared package. All 3 MCP servers now import from shared.
+- **OpenCTI health check in test-flow.sh** — API connectivity test checks `/health` endpoint
+- **`setup_helm_repos()` in deploy-stack.sh** — Adds all 7 required Helm repos before deployment, called from `all` case and individual Helm-dependent components
+
+### Changed
+- **Label standardization** — Wazuh Manager, Dashboard, and Agent manifests converted from `app:` to `app.kubernetes.io/name:` labels. Network policies and test script updated to match.
+- Network policies header comment updated to reflect egress is now controlled
+- MCP servers now depend on `@matchbox/mcp-shared` (file: link)
+
+### Security
+- Egress traffic locked down per namespace — only DNS, internal services, and HTTPS (where needed) allowed
+- TLS certificate verification enabled on all OpenSearch connections (was previously disabled)
+- Network segmentation now covers both ingress AND egress (was ingress-only)
+
 ## [1.3.0] — 2026-02-27
 
 Stability release — fix crash-looping components, harden reliability, optimize resource usage.
@@ -131,6 +156,7 @@ Initial release — home Security Operations Center with MCP integration and int
 - Deployment, teardown, and test automation scripts
 - Complete documentation with architecture docs, network diagrams, and runbooks
 
+[1.4.0]: https://github.com/ajokunu/MatchBox/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/ajokunu/MatchBox/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/ajokunu/MatchBox/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/ajokunu/MatchBox/compare/v1.0.0...v1.1.0

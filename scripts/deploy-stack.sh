@@ -32,6 +32,20 @@ if ! kubectl cluster-info &>/dev/null; then
   exit 1
 fi
 
+# Add required Helm chart repositories
+setup_helm_repos() {
+  echo "[helm] Adding Helm repositories..."
+  helm repo add opensearch https://opensearch-project.github.io/helm-charts/ 2>/dev/null || true
+  helm repo add bitnami https://charts.bitnami.com/bitnami 2>/dev/null || true
+  helm repo add minio https://charts.min.io/ 2>/dev/null || true
+  helm repo add strangebee https://charts.thehive-project.org 2>/dev/null || true
+  helm repo add opencti https://charts.opencti.io/ 2>/dev/null || true
+  helm repo add prometheus-community https://prometheus-community.github.io/helm-charts 2>/dev/null || true
+  helm repo add traefik https://helm.traefik.io/traefik 2>/dev/null || true
+  helm repo update
+  echo "  Done."
+}
+
 # Validate secrets are not using placeholder values
 validate_secrets() {
   local secrets_file="$K8S_DIR/shared/secrets.yaml"
@@ -207,6 +221,7 @@ deploy_ingress() {
 # Execute based on component argument
 case "$COMPONENT" in
   all)
+    setup_helm_repos
     deploy_namespaces
     deploy_shared
     deploy_wazuh
@@ -216,12 +231,12 @@ case "$COMPONENT" in
     deploy_ingress
     ;;
   namespaces) deploy_namespaces ;;
-  shared) deploy_shared ;;
+  shared) setup_helm_repos && deploy_shared ;;
   wazuh) deploy_wazuh ;;
-  thehive) deploy_thehive ;;
-  opencti) deploy_opencti ;;
-  monitoring) deploy_monitoring ;;
-  ingress) deploy_ingress ;;
+  thehive) setup_helm_repos && deploy_thehive ;;
+  opencti) setup_helm_repos && deploy_opencti ;;
+  monitoring) setup_helm_repos && deploy_monitoring ;;
+  ingress) setup_helm_repos && deploy_ingress ;;
   *)
     echo "Usage: $0 [all|namespaces|shared|wazuh|thehive|opencti|monitoring|ingress]"
     exit 1

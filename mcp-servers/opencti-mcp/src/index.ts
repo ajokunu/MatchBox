@@ -17,6 +17,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
+import { fetchWithRetry, formatResponse } from "@matchbox/mcp-shared";
 
 const OPENCTI_URL = process.env.OPENCTI_URL || "https://localhost:4000";
 const OPENCTI_TOKEN = process.env.OPENCTI_TOKEN;
@@ -26,39 +27,8 @@ if (!OPENCTI_TOKEN) {
   process.exit(1);
 }
 
-const REQUEST_TIMEOUT_MS = parseInt(process.env.REQUEST_TIMEOUT_MS || "10000", 10);
 /** Validate ID parameters to prevent path traversal (+ requires at least 1 char) */
 const safeId = z.string().regex(/^[a-zA-Z0-9_-]+$/, "Invalid ID format");
-
-/** Retry-eligible HTTP status codes */
-const RETRYABLE_CODES = new Set([429, 503]);
-
-/** Fetch with single retry on transient failures (429/503/timeout) */
-async function fetchWithRetry(url: string, opts: RequestInit, timeoutMs = REQUEST_TIMEOUT_MS): Promise<Response> {
-  for (let attempt = 0; attempt < 2; attempt++) {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
-    try {
-      const resp = await fetch(url, { ...opts, signal: controller.signal });
-      if (attempt === 0 && RETRYABLE_CODES.has(resp.status)) {
-        console.error(`Retrying ${url} after ${resp.status}...`);
-        await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
-        continue;
-      }
-      return resp;
-    } catch (err: unknown) {
-      if (attempt === 0 && err instanceof Error && err.name === "AbortError") {
-        console.error(`Retrying ${url} after timeout...`);
-        await new Promise((r) => setTimeout(r, 1000));
-        continue;
-      }
-      throw err;
-    } finally {
-      clearTimeout(timer);
-    }
-  }
-  throw new Error(`Request to ${url} failed after retries`);
-}
 
 /** Execute a GraphQL query against OpenCTI with timeout and retry */
 async function graphql(query: string, variables: Record<string, unknown> = {}): Promise<unknown> {
@@ -81,16 +51,6 @@ async function graphql(query: string, variables: Record<string, unknown> = {}): 
     throw new Error(`GraphQL errors: ${JSON.stringify(result.errors).slice(0, 500)}`);
   }
   return result.data;
-}
-
-/** Maximum response size in characters to prevent excessive output to LLM */
-const MAX_RESPONSE_CHARS = parseInt(process.env.MAX_RESPONSE_CHARS || "50000", 10);
-
-/** Serialize data to JSON and truncate if it exceeds the size limit */
-function formatResponse(data: unknown): string {
-  const json = JSON.stringify(data, null, 2);
-  if (json.length <= MAX_RESPONSE_CHARS) return json;
-  return json.slice(0, MAX_RESPONSE_CHARS) + `\n... [truncated: ${json.length} chars total, showing first ${MAX_RESPONSE_CHARS}]`;
 }
 
 const server = new McpServer({

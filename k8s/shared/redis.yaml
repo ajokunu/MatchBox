@@ -14,7 +14,7 @@ auth:
   existingSecret: soc-shared-secrets
   existingSecretPasswordKey: redis-password
 
-# Resource limits — slim config
+# Resource limits + health probes — slim config
 master:
   resources:
     requests:
@@ -27,9 +27,6 @@ master:
     enabled: true
     size: "1Gi"
     storageClass: "local-path"
-
-# Health probes — TCP on 6379
-master:
   livenessProbe:
     enabled: true
     initialDelaySeconds: 20
