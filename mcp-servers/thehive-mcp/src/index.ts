@@ -63,6 +63,16 @@ async function thehiveApi(
   }
 }
 
+/** Maximum response size in characters to prevent excessive output to LLM */
+const MAX_RESPONSE_CHARS = 50_000;
+
+/** Serialize data to JSON and truncate if it exceeds the size limit */
+function formatResponse(data: unknown): string {
+  const json = JSON.stringify(data, null, 2);
+  if (json.length <= MAX_RESPONSE_CHARS) return json;
+  return json.slice(0, MAX_RESPONSE_CHARS) + `\n... [truncated: ${json.length} chars total, showing first ${MAX_RESPONSE_CHARS}]`;
+}
+
 const server = new McpServer({
   name: "thehive-mcp",
   version: "1.0.0",
@@ -85,14 +95,14 @@ server.tool(
     query.push({ _name: "page", from: 0, to: limit });
 
     const result = await thehiveApi("POST", "/api/v1/query", { query });
-    return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+    return { content: [{ type: "text" as const, text: formatResponse(result) }] };
   }
 );
 
 // create-case
 server.tool(
   "create-case",
-  "Create a new TheHive incident case",
+  "[WRITE] Create a new TheHive incident case. This creates a persistent record.",
   {
     title: z.string().max(500).describe("Case title"),
     description: z.string().max(10000).describe("Case description (markdown supported)"),
@@ -109,7 +119,7 @@ server.tool(
       tlp: 2,  // TLP:AMBER
       pap: 2,  // PAP:AMBER
     });
-    return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+    return { content: [{ type: "text" as const, text: formatResponse(result) }] };
   }
 );
 
@@ -131,7 +141,7 @@ server.tool(
     return {
       content: [{
         type: "text" as const,
-        text: JSON.stringify({ case: caseData, observables }, null, 2),
+        text: formatResponse({ case: caseData, observables }),
       }],
     };
   }
@@ -140,7 +150,7 @@ server.tool(
 // add-observable
 server.tool(
   "add-observable",
-  "Add an observable (IOC) to a TheHive case",
+  "[WRITE] Add an observable (IOC) to a TheHive case. This modifies case data.",
   {
     case_id: safeId.describe("Case ID"),
     data_type: z.enum(["ip", "domain", "url", "hash", "filename", "mail", "other"]),
@@ -158,14 +168,14 @@ server.tool(
       pap: 2,
       ioc: true,
     });
-    return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+    return { content: [{ type: "text" as const, text: formatResponse(result) }] };
   }
 );
 
 // run-analyzer
 server.tool(
   "run-analyzer",
-  "Run a Cortex analyzer on a TheHive observable",
+  "[WRITE] Run a Cortex analyzer on a TheHive observable. This triggers external analysis.",
   {
     observable_id: safeId.describe("Observable ID"),
     analyzer_id: safeId.describe("Cortex analyzer ID (e.g., 'VirusTotal_GetReport_3_1')"),
@@ -175,7 +185,7 @@ server.tool(
       observableId: observable_id,
       analyzerId: analyzer_id,
     });
-    return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+    return { content: [{ type: "text" as const, text: formatResponse(result) }] };
   }
 );
 
@@ -186,7 +196,7 @@ server.tool(
   { job_id: safeId.describe("Cortex job ID") },
   async ({ job_id }) => {
     const result = await thehiveApi("GET", `/api/v1/connector/cortex/job/${encodeURIComponent(job_id)}`);
-    return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+    return { content: [{ type: "text" as const, text: formatResponse(result) }] };
   }
 );
 
@@ -207,14 +217,14 @@ server.tool(
     query.push({ _name: "page", from: 0, to: limit });
 
     const result = await thehiveApi("POST", "/api/v1/query", { query });
-    return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+    return { content: [{ type: "text" as const, text: formatResponse(result) }] };
   }
 );
 
 // merge-alerts
 server.tool(
   "merge-alerts",
-  "Merge related TheHive alerts into a single case",
+  "[WRITE] Merge related TheHive alerts into a single case. This permanently combines alerts.",
   {
     alert_ids: z.array(safeId).describe("Alert IDs to merge"),
     case_id: safeId.optional().describe("Existing case ID to merge into (creates new if omitted)"),
@@ -224,7 +234,7 @@ server.tool(
       alertIds: alert_ids,
       caseId: case_id,
     });
-    return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
+    return { content: [{ type: "text" as const, text: formatResponse(result) }] };
   }
 );
 

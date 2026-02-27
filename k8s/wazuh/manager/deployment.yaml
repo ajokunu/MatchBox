@@ -40,9 +40,12 @@ spec:
       labels:
         app: wazuh-manager
     spec:
+      automountServiceAccountToken: false
       containers:
         - name: wazuh-manager
           image: wazuh/wazuh-manager:4.11.1
+          securityContext:
+            allowPrivilegeEscalation: false
           ports:
             - containerPort: 1514
               name: agent-events
