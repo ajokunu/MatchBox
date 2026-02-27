@@ -1,0 +1,40 @@
+# OpenSearch CA Certificate ConfigMap
+# Used by OpenCTI and Wazuh to verify OpenSearch TLS connections.
+#
+# SETUP: Replace the placeholder below with your actual OpenSearch CA certificate.
+# Extract it from the OpenSearch cluster:
+#   kubectl exec -n shared opensearch-cluster-master-0 -- \
+#     cat /usr/share/opensearch/config/root-ca.pem > /tmp/opensearch-ca.pem
+#
+# Then create ConfigMaps in each namespace that needs it:
+#   kubectl create configmap opensearch-ca-cert -n opencti --from-file=ca.crt=/tmp/opensearch-ca.pem
+#   kubectl create configmap opensearch-ca-cert -n wazuh --from-file=ca.crt=/tmp/opensearch-ca.pem
+#
+# Or apply this file after populating the cert data:
+#   kubectl apply -f k8s/shared/opensearch-ca-cert.yaml
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: opensearch-ca-cert
+  namespace: opencti
+  labels:
+    app.kubernetes.io/part-of: matchbox-soc
+data:
+  ca.crt: |
+    -----BEGIN CERTIFICATE-----
+    REPLACE_WITH_YOUR_OPENSEARCH_CA_CERTIFICATE
+    -----END CERTIFICATE-----
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: opensearch-ca-cert
+  namespace: wazuh
+  labels:
+    app.kubernetes.io/part-of: matchbox-soc
+data:
+  ca.crt: |
+    -----BEGIN CERTIFICATE-----
+    REPLACE_WITH_YOUR_OPENSEARCH_CA_CERTIFICATE
+    -----END CERTIFICATE-----

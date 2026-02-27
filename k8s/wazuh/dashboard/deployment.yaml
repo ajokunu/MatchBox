@@ -6,10 +6,10 @@ metadata:
   name: wazuh-dashboard
   namespace: wazuh
   labels:
-    app: wazuh-dashboard
+    app.kubernetes.io/name: wazuh-dashboard
 spec:
   selector:
-    app: wazuh-dashboard
+    app.kubernetes.io/name: wazuh-dashboard
   ports:
     - name: https
       port: 5601
@@ -21,16 +21,16 @@ metadata:
   name: wazuh-dashboard
   namespace: wazuh
   labels:
-    app: wazuh-dashboard
+    app.kubernetes.io/name: wazuh-dashboard
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: wazuh-dashboard
+      app.kubernetes.io/name: wazuh-dashboard
   template:
     metadata:
       labels:
-        app: wazuh-dashboard
+        app.kubernetes.io/name: wazuh-dashboard
     spec:
       automountServiceAccountToken: false
       # InitContainer prepares writable directories for the Dashboard.

@@ -6,15 +6,15 @@ metadata:
   name: wazuh-agent
   namespace: wazuh
   labels:
-    app: wazuh-agent
+    app.kubernetes.io/name: wazuh-agent
 spec:
   selector:
     matchLabels:
-      app: wazuh-agent
+      app.kubernetes.io/name: wazuh-agent
   template:
     metadata:
       labels:
-        app: wazuh-agent
+        app.kubernetes.io/name: wazuh-agent
     spec:
       # Tolerate all taints to run on every node including control plane
       tolerations:

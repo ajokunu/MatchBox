@@ -2,8 +2,9 @@
 # Implements network segmentation across all namespaces.
 # Compliance: ISO 27001 A.8.3/A.8.20/A.8.22, NIST 800-53 AC-4/SC-7
 #
-# Policy: Default-deny ingress per namespace, then explicit allow rules.
-# Egress is unrestricted (connectors need internet for threat feeds).
+# Policy: Default-deny ingress AND egress per namespace, then explicit allow rules.
+# Egress: DNS (UDP 53) allowed everywhere; HTTPS (443) allowed for namespaces
+# that need internet (opencti connectors, thehive/cortex analyzers).
 # kube-system traffic (DNS, Traefik) is allowed via namespace selectors.
 
 ---
@@ -182,7 +183,7 @@ metadata:
 spec:
   podSelector:
     matchLabels:
-      app: wazuh-manager
+      app.kubernetes.io/name: wazuh-manager
   policyTypes:
     - Ingress
   ingress:
@@ -207,7 +208,7 @@ metadata:
 spec:
   podSelector:
     matchLabels:
-      app: wazuh-dashboard
+      app.kubernetes.io/name: wazuh-dashboard
   policyTypes:
     - Ingress
   ingress:
@@ -469,3 +470,265 @@ spec:
           port: 4000   # OpenCTI metrics
         - protocol: TCP
           port: 14269  # OpenCTI health
+
+---
+# ============================================================
+# EGRESS POLICIES — Default-deny + explicit allow per namespace
+# ============================================================
+
+# --- SHARED NAMESPACE EGRESS ---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-egress
+  namespace: shared
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+
+---
+# Shared: Allow DNS + internal pod-to-pod
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-egress-shared
+  namespace: shared
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    # DNS resolution (kube-dns in kube-system)
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # Pod-to-pod within shared namespace
+    - to:
+        - podSelector: {}
+
+---
+# --- WAZUH NAMESPACE EGRESS ---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-egress
+  namespace: wazuh
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+
+---
+# Wazuh: Allow DNS + shared namespace (OpenSearch 9200)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-egress-wazuh
+  namespace: wazuh
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    # DNS
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # Pod-to-pod within wazuh namespace
+    - to:
+        - podSelector: {}
+    # OpenSearch in shared namespace
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: shared
+      ports:
+        - protocol: TCP
+          port: 9200
+
+---
+# --- THEHIVE NAMESPACE EGRESS ---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-egress
+  namespace: thehive
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+
+---
+# TheHive: Allow DNS + shared (OpenSearch, MinIO, NFS) + HTTPS for Cortex analyzers
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-egress-thehive
+  namespace: thehive
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    # DNS
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # Pod-to-pod within thehive namespace
+    - to:
+        - podSelector: {}
+    # Shared namespace: OpenSearch, MinIO, NFS
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: shared
+      ports:
+        - protocol: TCP
+          port: 9200   # OpenSearch
+        - protocol: TCP
+          port: 9000   # MinIO
+        - protocol: TCP
+          port: 2049   # NFS
+    # HTTPS egress for Cortex analyzers (VirusTotal, etc.)
+    - to: []
+      ports:
+        - protocol: TCP
+          port: 443
+
+---
+# --- OPENCTI NAMESPACE EGRESS ---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-egress
+  namespace: opencti
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+
+---
+# OpenCTI: Allow DNS + shared (OpenSearch, Redis, RabbitMQ, MinIO) + HTTPS for connectors
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-egress-opencti
+  namespace: opencti
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    # DNS
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # Pod-to-pod within opencti namespace
+    - to:
+        - podSelector: {}
+    # Shared namespace: OpenSearch, Redis, RabbitMQ, MinIO
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: shared
+      ports:
+        - protocol: TCP
+          port: 9200   # OpenSearch
+        - protocol: TCP
+          port: 6379   # Redis
+        - protocol: TCP
+          port: 5672   # RabbitMQ
+        - protocol: TCP
+          port: 9000   # MinIO
+    # HTTPS egress for threat feed connectors (MITRE, AlienVault, AbuseIPDB, etc.)
+    - to: []
+      ports:
+        - protocol: TCP
+          port: 443
+
+---
+# --- MONITORING NAMESPACE EGRESS ---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-egress
+  namespace: monitoring
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+
+---
+# Monitoring: Allow DNS + scrape all namespaces on metrics ports
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-egress-monitoring
+  namespace: monitoring
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    # DNS
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # Pod-to-pod within monitoring namespace
+    - to:
+        - podSelector: {}
+    # Scrape all namespaces on metrics ports
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - protocol: TCP
+          port: 9090   # Prometheus
+        - protocol: TCP
+          port: 9093   # Alertmanager
+        - protocol: TCP
+          port: 9100   # node-exporter
+        - protocol: TCP
+          port: 9200   # OpenSearch
+        - protocol: TCP
+          port: 4000   # OpenCTI
+        - protocol: TCP
+          port: 9000   # TheHive
+        - protocol: TCP
+          port: 9001   # Cortex
+        - protocol: TCP
+          port: 55000  # Wazuh Manager API
+        - protocol: TCP
+          port: 14269  # OpenCTI health
+        - protocol: TCP
+          port: 15692  # RabbitMQ metrics
