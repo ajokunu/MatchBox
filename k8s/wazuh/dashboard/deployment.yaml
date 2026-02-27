@@ -33,18 +33,33 @@ spec:
         app: wazuh-dashboard
     spec:
       automountServiceAccountToken: false
-      securityContext:
-        runAsNonRoot: true
-        runAsUser: 1000
-        fsGroup: 1000
+      # InitContainer prepares writable directories for the Dashboard.
+      # The 4.14.3 image requires:
+      # 1. /etc/wazuh-dashboard/ — writable for keystore creation (doesn't exist in image)
+      # 2. /usr/share/wazuh-dashboard/config/opensearch_dashboards.yml — provided via ConfigMap
+      initContainers:
+        - name: init-dashboard-config
+          image: wazuh/wazuh-dashboard:4.14.3
+          command: ["sh", "-c"]
+          args:
+            - |
+              mkdir -p /dashboard-init &&
+              cp /tmp/dashboard-config/opensearch_dashboards.yml /config-init/opensearch_dashboards.yml &&
+              cp -a /usr/share/wazuh-dashboard/config/certs /config-init/certs 2>/dev/null || true
+          securityContext:
+            runAsUser: 0
+          volumeMounts:
+            - name: dashboard-etc
+              mountPath: /dashboard-init
+            - name: config-writable
+              mountPath: /config-init
+            - name: dashboard-config
+              mountPath: /tmp/dashboard-config
       containers:
         - name: dashboard
-          image: wazuh/wazuh-dashboard:4.11.1
+          image: wazuh/wazuh-dashboard:4.14.3
           securityContext:
             allowPrivilegeEscalation: false
-            readOnlyRootFilesystem: false
-            capabilities:
-              drop: ["ALL"]
           ports:
             - containerPort: 5601
               name: https
@@ -54,7 +69,7 @@ spec:
               cpu: "100m"
             limits:
               memory: "512Mi"
-              cpu: "250m"
+              cpu: "500m"
           env:
             - name: INDEXER_URL
               value: "https://opensearch-cluster-master.shared.svc.cluster.local:9200"
@@ -69,7 +84,7 @@ spec:
             - name: WAZUH_API_URL
               value: "https://wazuh-manager.wazuh.svc.cluster.local"
             - name: DASHBOARD_USERNAME
-              value: "kibanaserver"
+              value: "admin"
             - name: DASHBOARD_PASSWORD
               valueFrom:
                 secretKeyRef:
@@ -85,15 +100,19 @@ spec:
                   key: wazuh-api-password
                   optional: true
           volumeMounts:
+            - name: dashboard-etc
+              mountPath: /etc/wazuh-dashboard
+            - name: config-writable
+              mountPath: /usr/share/wazuh-dashboard/config
             - name: certs
-              mountPath: /etc/wazuh-dashboard/certs
+              mountPath: /usr/share/wazuh-dashboard/config/certs
               readOnly: true
           readinessProbe:
             httpGet:
               port: 5601
               path: /
               scheme: HTTPS
-            initialDelaySeconds: 45
+            initialDelaySeconds: 60
             periodSeconds: 15
             timeoutSeconds: 5
           livenessProbe:
@@ -101,11 +120,18 @@ spec:
               port: 5601
               path: /
               scheme: HTTPS
-            initialDelaySeconds: 120
+            initialDelaySeconds: 180
             periodSeconds: 30
             timeoutSeconds: 5
             failureThreshold: 6
       volumes:
+        - name: dashboard-etc
+          emptyDir: {}
+        - name: config-writable
+          emptyDir: {}
+        - name: dashboard-config
+          configMap:
+            name: wazuh-dashboard-config
         - name: certs
           secret:
             secretName: wazuh-dashboard-certs

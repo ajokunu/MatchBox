@@ -16,15 +16,8 @@ data:
 
     <decoder name="kubernetes-audit-fields">
       <parent>kubernetes-audit</parent>
-      <regex type="json">
-        verb=verb,
-        user.username=user.username,
-        objectRef.resource=objectRef.resource,
-        objectRef.namespace=objectRef.namespace,
-        objectRef.name=objectRef.name,
-        responseStatus.code=responseStatus.code,
-        sourceIPs=sourceIPs
-      </regex>
+      <!-- Wazuh 4.14+ uses plugin_decoder for JSON extraction -->
+      <plugin_decoder>JSON_Decoder</plugin_decoder>
     </decoder>
 
     <!-- Container runtime (containerd) log decoder -->
@@ -39,12 +32,14 @@ data:
     </decoder>
 
     <!-- K3s server log decoder -->
+    <!-- K3s logs: E0227 17:19:09.816 12345 file.go:100] message -->
     <decoder name="k3s-server">
-      <prematch>^E\d{4}|^W\d{4}|^I\d{4}</prematch>
+      <prematch>^E\d\d\d\d|^W\d\d\d\d|^I\d\d\d\d</prematch>
     </decoder>
 
     <decoder name="k3s-server-fields">
       <parent>k3s-server</parent>
-      <regex>^(\w)\d{4} (\S+)\s+\d+\s+(\S+):\d+\] (.+)</regex>
+      <!-- Wazuh OS_Regex: no {n} quantifiers, use repeated \d instead -->
+      <regex>^(\w)\d\d\d\d (\S+)\s+\d+\s+(\S+):\d+] (.+)</regex>
       <order>severity,timestamp,source_file,message</order>
     </decoder>

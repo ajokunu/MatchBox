@@ -37,28 +37,24 @@ spec:
         app.kubernetes.io/name: cortex
     spec:
       serviceAccountName: cortex-job-runner
-      securityContext:
-        runAsNonRoot: true
-        runAsUser: 1000
-        fsGroup: 1000
+      # Note: Cortex image requires write access to /var/log/cortex/ and /etc/cortex/
+      # for log creation and config management during startup. Pod-level runAsUser
+      # removed — the image manages user context internally via su.
       containers:
         - name: cortex
           image: thehiveproject/cortex:3.1.8
           securityContext:
             allowPrivilegeEscalation: false
-            readOnlyRootFilesystem: false
-            capabilities:
-              drop: ["ALL"]
           ports:
             - containerPort: 9001
               name: http
           resources:
             requests:
-              memory: "256Mi"
+              memory: "384Mi"
               cpu: "100m"
             limits:
-              memory: "512Mi"
-              cpu: "250m"
+              memory: "768Mi"
+              cpu: "500m"
           env:
             - name: es_uri
               value: "http://opensearch-cluster-master.shared.svc.cluster.local:9200"

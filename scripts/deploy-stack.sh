@@ -72,22 +72,22 @@ deploy_shared() {
   echo "  OpenSearch..."
   helm upgrade --install opensearch opensearch/opensearch \
     -n shared -f "$K8S_DIR/shared/opensearch.yaml" \
-    --wait --timeout 5m
+    --cleanup-on-fail --wait --timeout 5m
 
   echo "  Redis..."
   helm upgrade --install redis bitnami/redis \
     -n shared -f "$K8S_DIR/shared/redis.yaml" \
-    --wait --timeout 3m
+    --cleanup-on-fail --wait --timeout 3m
 
   echo "  RabbitMQ..."
   helm upgrade --install rabbitmq bitnami/rabbitmq \
     -n shared -f "$K8S_DIR/shared/rabbitmq.yaml" \
-    --wait --timeout 3m
+    --cleanup-on-fail --wait --timeout 3m
 
   echo "  MinIO..."
   helm upgrade --install minio minio/minio \
     -n shared -f "$K8S_DIR/shared/minio.yaml" \
-    --wait --timeout 3m
+    --cleanup-on-fail --wait --timeout 3m
 
   echo "  NFS Server..."
   kubectl apply -f "$K8S_DIR/storage/nfs-server.yaml"
@@ -128,12 +128,12 @@ deploy_thehive() {
   echo "  Deploying TheHive..."
   helm upgrade --install thehive strangebee/thehive \
     -n thehive -f "$K8S_DIR/thehive/helm-values.yaml" \
-    --wait --timeout 5m || echo "  WARN: TheHive Helm install may need manual adjustment"
+    --cleanup-on-fail --wait --timeout 5m || echo "  WARN: TheHive Helm install may need manual adjustment"
 
   echo "  Deploying Cortex..."
   helm upgrade --install cortex strangebee/cortex \
     -n thehive -f "$K8S_DIR/thehive/cortex/helm-values.yaml" \
-    --wait --timeout 5m || echo "  WARN: Cortex Helm install may need manual adjustment"
+    --cleanup-on-fail --wait --timeout 5m || echo "  WARN: Cortex Helm install may need manual adjustment"
 
   echo "  Done."
 }
@@ -169,7 +169,7 @@ deploy_opencti() {
   echo "  Deploying OpenCTI platform..."
   helm upgrade --install opencti opencti/opencti \
     -n opencti -f "$K8S_DIR/opencti/helm-values.yaml" \
-    --wait --timeout 10m || echo "  WARN: OpenCTI Helm install may need manual adjustment"
+    --cleanup-on-fail --wait --timeout 10m || echo "  WARN: OpenCTI Helm install may need manual adjustment"
 
   echo "  Deploying connectors..."
   kubectl apply -f "$K8S_DIR/opencti/connectors/"
@@ -231,5 +231,16 @@ esac
 echo ""
 echo "=== Deployment Complete ==="
 echo ""
+
+# Final health check
+echo "Running post-deploy health check..."
+UNHEALTHY=$(kubectl get pods --all-namespaces --no-headers 2>/dev/null | grep -v Running | grep -v Completed | wc -l | tr -d ' ')
+if [ "$UNHEALTHY" -gt 0 ]; then
+  echo "WARNING: $UNHEALTHY pod(s) are not Running:"
+  kubectl get pods --all-namespaces --no-headers 2>/dev/null | grep -v Running | grep -v Completed
+  echo ""
+fi
+
 echo "Check status: kubectl get pods --all-namespaces"
+echo "Run tests:    ./scripts/test-flow.sh"
 echo "Dashboards:   https://soc.homelab.local/{wazuh,thehive,opencti,grafana}"

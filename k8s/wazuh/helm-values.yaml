@@ -20,7 +20,7 @@ manager:
       cpu: "500m"
   # Use external OpenSearch (shared namespace)
   indexer:
-    url: "https://opensearch.shared.svc.cluster.local:9200"
+    url: "https://opensearch-cluster-master.shared.svc.cluster.local:9200"
   # TheHive integration — forward high-severity alerts
   integration:
     thehive:
@@ -46,7 +46,7 @@ dashboard:
       cpu: "250m"
   # Point to shared OpenSearch
   opensearch:
-    url: "https://opensearch.shared.svc.cluster.local:9200"
+    url: "https://opensearch-cluster-master.shared.svc.cluster.local:9200"
 
 # --- Wazuh Agent (DaemonSet) ---
 agent:

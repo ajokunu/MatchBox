@@ -38,13 +38,13 @@ data:
       <indexer>
         <enabled>yes</enabled>
         <hosts>
-          <host>https://opensearch.shared.svc.cluster.local:9200</host>
+          <host>https://opensearch-cluster-master.shared.svc.cluster.local:9200</host>
         </hosts>
         <!-- SSL disabled for home lab (internal ClusterIP only) -->
       </indexer>
 
       <!-- TheHive integration — forward alerts level 7+ to TheHive -->
-      <!-- This triggers the custom-w2thive.py script for each matching alert -->
+      <!-- Disabled: integration script not yet deployed. Uncomment when w2thive.py is installed.
       <integration>
         <name>custom-w2thive</name>
         <hook_url>http://thehive.thehive.svc.cluster.local:9000</hook_url>
@@ -52,6 +52,7 @@ data:
         <level>7</level>
         <alert_format>json</alert_format>
       </integration>
+      -->
 
       <!-- File Integrity Monitoring -->
       <syscheck>
@@ -80,6 +81,8 @@ data:
         <check_ports>yes</check_ports>
         <check_if>yes</check_if>
         <frequency>43200</frequency>
+        <rootkit_files>etc/rootcheck/rootkit_files.txt</rootkit_files>
+        <rootkit_trojans>etc/rootcheck/rootkit_trojans.txt</rootkit_trojans>
       </rootcheck>
 
       <!-- Vulnerability detection -->
@@ -106,11 +109,18 @@ data:
         <location>/var/log/auth.log</location>
       </localfile>
 
-      <!-- Custom rules and decoders -->
+      <!-- Ruleset: built-in + custom rules and decoders -->
       <ruleset>
+        <!-- Default Wazuh ruleset (loaded first — provides base SIDs) -->
+        <decoder_dir>ruleset/decoders</decoder_dir>
+        <rule_dir>ruleset/rules</rule_dir>
+        <rule_exclude>0215-policy_rules.xml</rule_exclude>
+        <list>etc/lists/audit-keys</list>
+        <list>etc/lists/amazon/aws-eventnames</list>
+        <list>etc/lists/security-eventchannel</list>
+        <!-- Custom decoders and rules (loaded after built-ins) -->
         <decoder_dir>etc/decoders</decoder_dir>
         <rule_dir>etc/rules</rule_dir>
-        <!-- Custom K8s rules -->
         <rule_dir>etc/rules/custom</rule_dir>
         <decoder_dir>etc/decoders/custom</decoder_dir>
       </ruleset>

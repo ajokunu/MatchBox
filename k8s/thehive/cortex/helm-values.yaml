@@ -8,15 +8,15 @@ cortex:
   # Resource limits — slim config
   resources:
     requests:
-      memory: "256Mi"
+      memory: "384Mi"
       cpu: "100m"
     limits:
-      memory: "512Mi"
-      cpu: "250m"
+      memory: "768Mi"
+      cpu: "500m"
 
   # Cortex uses its own Elasticsearch index (separate from TheHive)
   elasticsearch:
-    url: "http://opensearch.shared.svc.cluster.local:9200"
+    url: "http://opensearch-cluster-master.shared.svc.cluster.local:9200"
     indexPrefix: "cortex"
 
   # Kubernetes job runner — how Cortex executes analyzers

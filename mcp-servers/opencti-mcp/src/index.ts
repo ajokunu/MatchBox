@@ -26,43 +26,65 @@ if (!OPENCTI_TOKEN) {
   process.exit(1);
 }
 
-const REQUEST_TIMEOUT_MS = 10_000;
-/** Validate ID parameters to prevent path traversal */
+const REQUEST_TIMEOUT_MS = parseInt(process.env.REQUEST_TIMEOUT_MS || "10000", 10);
+/** Validate ID parameters to prevent path traversal (+ requires at least 1 char) */
 const safeId = z.string().regex(/^[a-zA-Z0-9_-]+$/, "Invalid ID format");
 
-/** Execute a GraphQL query against OpenCTI with timeout */
-async function graphql(query: string, variables: Record<string, unknown> = {}): Promise<unknown> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+/** Retry-eligible HTTP status codes */
+const RETRYABLE_CODES = new Set([429, 503]);
 
-  try {
-    const resp = await fetch(`${OPENCTI_URL}/graphql`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${OPENCTI_TOKEN}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ query, variables }),
-      signal: controller.signal,
-    });
-
-    if (!resp.ok) {
-      const text = (await resp.text()).slice(0, 200);
-      throw new Error(`OpenCTI API error: ${resp.status} ${text}`);
+/** Fetch with single retry on transient failures (429/503/timeout) */
+async function fetchWithRetry(url: string, opts: RequestInit, timeoutMs = REQUEST_TIMEOUT_MS): Promise<Response> {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const resp = await fetch(url, { ...opts, signal: controller.signal });
+      if (attempt === 0 && RETRYABLE_CODES.has(resp.status)) {
+        console.error(`Retrying ${url} after ${resp.status}...`);
+        await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
+        continue;
+      }
+      return resp;
+    } catch (err: unknown) {
+      if (attempt === 0 && err instanceof Error && err.name === "AbortError") {
+        console.error(`Retrying ${url} after timeout...`);
+        await new Promise((r) => setTimeout(r, 1000));
+        continue;
+      }
+      throw err;
+    } finally {
+      clearTimeout(timer);
     }
-
-    const result = await resp.json() as { data: unknown; errors?: unknown[] };
-    if (result.errors) {
-      throw new Error(`GraphQL errors: ${JSON.stringify(result.errors).slice(0, 500)}`);
-    }
-    return result.data;
-  } finally {
-    clearTimeout(timer);
   }
+  throw new Error(`Request to ${url} failed after retries`);
+}
+
+/** Execute a GraphQL query against OpenCTI with timeout and retry */
+async function graphql(query: string, variables: Record<string, unknown> = {}): Promise<unknown> {
+  const resp = await fetchWithRetry(`${OPENCTI_URL}/graphql`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${OPENCTI_TOKEN}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ query, variables }),
+  });
+
+  if (!resp.ok) {
+    const text = (await resp.text()).slice(0, 200);
+    throw new Error(`OpenCTI API error: ${resp.status} ${text}`);
+  }
+
+  const result = await resp.json() as { data: unknown; errors?: unknown[] };
+  if (result.errors) {
+    throw new Error(`GraphQL errors: ${JSON.stringify(result.errors).slice(0, 500)}`);
+  }
+  return result.data;
 }
 
 /** Maximum response size in characters to prevent excessive output to LLM */
-const MAX_RESPONSE_CHARS = 50_000;
+const MAX_RESPONSE_CHARS = parseInt(process.env.MAX_RESPONSE_CHARS || "50000", 10);
 
 /** Serialize data to JSON and truncate if it exceeds the size limit */
 function formatResponse(data: unknown): string {

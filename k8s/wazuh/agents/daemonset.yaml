@@ -48,6 +48,19 @@ spec:
             - name: host-etc
               mountPath: /host/etc
               readOnly: true
+          # Health check — verify wazuh-agentd process is running
+          livenessProbe:
+            exec:
+              command: ["sh", "-c", "pgrep -x wazuh-agentd || pgrep -x ossec-agentd"]
+            initialDelaySeconds: 30
+            periodSeconds: 60
+            failureThreshold: 3
+          readinessProbe:
+            exec:
+              command: ["sh", "-c", "pgrep -x wazuh-agentd || pgrep -x ossec-agentd"]
+            initialDelaySeconds: 15
+            periodSeconds: 30
+            failureThreshold: 3
           securityContext:
             privileged: true  # Required for rootcheck and FIM on host
       volumes:

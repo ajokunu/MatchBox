@@ -13,8 +13,14 @@ metadata:
     connector: alienvault-otx
 spec:
   schedule: "0 2 * * *"  # Daily at 2 AM
+  concurrencyPolicy: Forbid          # Never run two imports simultaneously
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
   jobTemplate:
     spec:
+      backoffLimit: 2                   # Max 2 retries on failure
+      activeDeadlineSeconds: 3600       # Kill after 1 hour
+      ttlSecondsAfterFinished: 3600     # Clean up completed pods after 1 hour
       template:
         spec:
           restartPolicy: Never

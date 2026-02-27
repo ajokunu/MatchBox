@@ -41,6 +41,26 @@ spec:
         app: wazuh-manager
     spec:
       automountServiceAccountToken: false
+      # InitContainer copies default /var/ossec/etc/ from the image to an emptyDir,
+      # then overlays our custom ossec.conf. This ensures:
+      # 1. The init scripts can sed -i on ossec.conf (writable filesystem, not ConfigMap)
+      # 2. Default files like etc/shared/ar.conf are present
+      # 3. Custom rules/decoders still overlay via separate ConfigMap mounts
+      initContainers:
+        - name: init-config
+          image: wazuh/wazuh-manager:4.14.3
+          command: ["sh", "-c"]
+          args:
+            - |
+              cp -a /var/ossec/etc/. /etc-init/ &&
+              cp /tmp/custom-config/ossec.conf /etc-init/ossec.conf &&
+              mkdir -p /etc-init/shared &&
+              [ -f /etc-init/shared/ar.conf ] || touch /etc-init/shared/ar.conf
+          volumeMounts:
+            - name: config-staging
+              mountPath: /tmp/custom-config
+            - name: etc-writable
+              mountPath: /etc-init
       containers:
         - name: wazuh-manager
           image: wazuh/wazuh-manager:4.14.3
@@ -76,9 +96,8 @@ spec:
           volumeMounts:
             - name: data
               mountPath: /var/ossec/data
-            - name: config
-              mountPath: /var/ossec/etc/ossec.conf
-              subPath: ossec.conf
+            - name: etc-writable
+              mountPath: /var/ossec/etc
             - name: custom-rules
               mountPath: /var/ossec/etc/rules/custom
             - name: custom-decoders
@@ -97,9 +116,11 @@ spec:
             timeoutSeconds: 5
             failureThreshold: 6
       volumes:
-        - name: config
+        - name: config-staging
           configMap:
             name: wazuh-manager-config
+        - name: etc-writable
+          emptyDir: {}
         - name: custom-rules
           configMap:
             name: wazuh-custom-rules
