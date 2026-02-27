@@ -43,7 +43,7 @@ spec:
       automountServiceAccountToken: false
       containers:
         - name: wazuh-manager
-          image: wazuh/wazuh-manager:4.11.1
+          image: wazuh/wazuh-manager:4.14.3
           securityContext:
             allowPrivilegeEscalation: false
           ports:

@@ -83,8 +83,11 @@ Three custom MCP servers let Claude Code interact with the SOC:
 ## Dashboard
 
 The SOC is integrated into the MatchBox dashboard at `http://localhost:3099`:
-- **SOC tab** — Architecture, components, resource budget, MCP tools, port reference
-- **Blog tab** — Medium-style article about building the home SOC
+- **Overview** — Architecture diagram, component cards, resource budget, quick start
+- **Architecture** — Data flow pipelines, port reference, namespace map, design decisions
+- **Components** — Detailed config for Wazuh, OpenCTI, TheHive, shared infra, monitoring
+- **MCP Servers** — Tool tables, env vars, usage examples for all 21 MCP tools
+- **Blog** — Medium-style article about building a SOC on 16GB
 
 A standalone version is also available at `public/index.html`.
 

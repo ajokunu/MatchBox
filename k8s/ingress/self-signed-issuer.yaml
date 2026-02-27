@@ -1,0 +1,63 @@
+# Self-Signed Certificate Generation Script
+# Generates TLS cert for soc.homelab.local and creates K8s Secret
+#
+# Compliance: ISO 27001 A.8.24, NIST 800-53 SC-8/SC-13
+#
+# Usage: Run once before deploying ingress
+#   ./scripts/generate-tls-cert.sh
+#   OR manually:
+#     openssl req -x509 -nodes -days 3650 -newkey rsa:2048 \
+#       -keyout tls.key -out tls.crt \
+#       -subj "/CN=soc.homelab.local/O=MatchBox SOC" \
+#       -addext "subjectAltName=DNS:soc.homelab.local,DNS:*.soc.homelab.local"
+#     kubectl create secret tls soc-tls-cert \
+#       --cert=tls.crt --key=tls.key -n kube-system
+#
+# If cert-manager is installed, apply this instead of generating manually:
+---
+# Option A: cert-manager self-signed issuer (if cert-manager is installed)
+# Install cert-manager: helm install cert-manager jetstack/cert-manager --set installCRDs=true
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: selfsigned-issuer
+spec:
+  selfSigned: {}
+---
+# Certificate resource — auto-generates and renews the TLS cert
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: soc-tls-cert
+  namespace: kube-system
+spec:
+  secretName: soc-tls-cert
+  duration: 8760h  # 1 year
+  renewBefore: 720h  # Renew 30 days before expiry
+  isCA: false
+  privateKey:
+    algorithm: RSA
+    size: 2048
+  subject:
+    organizations:
+      - MatchBox SOC
+  dnsNames:
+    - soc.homelab.local
+    - "*.soc.homelab.local"
+  issuerRef:
+    name: selfsigned-issuer
+    kind: ClusterIssuer
+---
+# Option B: Manual TLS secret (if cert-manager is NOT installed)
+# Uncomment and apply after running openssl command above:
+# apiVersion: v1
+# kind: Secret
+# metadata:
+#   name: soc-tls-cert
+#   namespace: kube-system
+#   labels:
+#     app.kubernetes.io/part-of: matchbox-soc
+# type: kubernetes.io/tls
+# data:
+#   tls.crt: <base64-encoded-cert>
+#   tls.key: <base64-encoded-key>
