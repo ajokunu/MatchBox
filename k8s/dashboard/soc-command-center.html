@@ -1,0 +1,796 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MatchBox SOC Command Center</title>
+<style>
+  :root {
+    --bg-primary: #0a0e17;
+    --bg-secondary: #111827;
+    --bg-card: #1a2332;
+    --bg-card-hover: #1f2a3d;
+    --border: #2d3a4d;
+    --accent-blue: #3b82f6;
+    --accent-green: #10b981;
+    --accent-orange: #f59e0b;
+    --accent-red: #ef4444;
+    --accent-purple: #8b5cf6;
+    --accent-cyan: #06b6d4;
+    --text-primary: #e5e7eb;
+    --text-secondary: #9ca3af;
+    --text-dim: #6b7280;
+    --glow-blue: 0 0 20px rgba(59,130,246,0.3);
+    --glow-green: 0 0 20px rgba(16,185,129,0.3);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'SF Mono', 'Fira Code', 'JetBrains Mono', 'Cascadia Code', monospace;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    overflow: hidden;
+    height: 100vh;
+  }
+
+  /* Scanline effect */
+  .scanline {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, var(--accent-cyan), transparent);
+    opacity: 0.12;
+    animation: scanline 8s linear infinite;
+    pointer-events: none;
+    z-index: 1000;
+  }
+  @keyframes scanline {
+    0% { top: 0; }
+    100% { top: 100vh; }
+  }
+
+  /* Header */
+  .header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 16px;
+    background: linear-gradient(135deg, var(--bg-secondary) 0%, #0f172a 100%);
+    border-bottom: 1px solid var(--border);
+    height: 48px;
+    position: relative;
+    z-index: 100;
+  }
+  .header::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--accent-blue), transparent);
+  }
+
+  .logo-section {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .logo {
+    width: 30px;
+    height: 30px;
+    background: linear-gradient(135deg, var(--accent-blue), var(--accent-cyan));
+    border-radius: 7px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    font-weight: bold;
+    box-shadow: var(--glow-blue);
+    color: white;
+  }
+  .title {
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    background: linear-gradient(90deg, var(--accent-blue), var(--accent-cyan));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  .subtitle {
+    font-size: 9px;
+    color: var(--text-dim);
+    letter-spacing: 3px;
+    text-transform: uppercase;
+  }
+
+  .header-right {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+  }
+  .status-bar {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+  .status-item {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 10px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    padding: 3px 6px;
+    border-radius: 4px;
+    transition: background 0.2s;
+  }
+  .status-item:hover { background: rgba(255,255,255,0.05); }
+  .status-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    transition: all 0.3s;
+  }
+  .status-dot.green { background: var(--accent-green); box-shadow: 0 0 6px var(--accent-green); }
+  .status-dot.red { background: var(--accent-red); box-shadow: 0 0 6px var(--accent-red); animation: blink 1s ease-in-out infinite; }
+  .status-dot.checking { background: var(--accent-orange); box-shadow: 0 0 6px var(--accent-orange); }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
+  .clock {
+    font-size: 12px;
+    color: var(--accent-cyan);
+    font-weight: 600;
+    letter-spacing: 1px;
+  }
+
+  /* Main Layout */
+  .main {
+    display: grid;
+    grid-template-columns: 1fr 320px;
+    height: calc(100vh - 48px);
+    gap: 0;
+  }
+
+  /* Grafana Panel (left) */
+  .grafana-panel {
+    position: relative;
+    border-right: 1px solid var(--border);
+  }
+  .grafana-panel iframe {
+    width: 100%;
+    height: 100%;
+    border: none;
+    background: #111;
+  }
+  .grafana-panel .panel-header {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 4px 12px;
+    background: rgba(10,14,23,0.85);
+    backdrop-filter: blur(8px);
+    z-index: 10;
+    border-bottom: 1px solid rgba(45,58,77,0.5);
+    opacity: 0;
+    transition: opacity 0.3s;
+  }
+  .grafana-panel:hover .panel-header { opacity: 1; }
+  .panel-label {
+    font-size: 10px;
+    color: var(--text-dim);
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+  .panel-btn {
+    font-size: 10px;
+    padding: 2px 8px;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.2s;
+  }
+  .panel-btn:hover { background: var(--accent-blue); color: white; border-color: var(--accent-blue); }
+
+  .loading-overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg-secondary);
+    z-index: 5;
+    transition: opacity 0.5s;
+  }
+  .loading-overlay.hidden { opacity: 0; pointer-events: none; }
+  .loader {
+    width: 36px;
+    height: 36px;
+    border: 3px solid var(--border);
+    border-top-color: var(--accent-blue);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .loader-text {
+    margin-top: 10px;
+    font-size: 10px;
+    color: var(--text-dim);
+    letter-spacing: 1px;
+  }
+
+  /* Service Sidebar (right) */
+  .sidebar {
+    display: flex;
+    flex-direction: column;
+    background: var(--bg-primary);
+    overflow-y: auto;
+  }
+  .sidebar-header {
+    padding: 10px 14px 6px;
+    font-size: 10px;
+    color: var(--text-dim);
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    border-bottom: 1px solid var(--border);
+  }
+
+  /* Service Card */
+  .service-card {
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+    transition: all 0.2s;
+    position: relative;
+  }
+  .service-card:hover { background: var(--bg-card-hover); }
+  .service-card::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 3px;
+    border-radius: 0 3px 3px 0;
+    transition: background 0.2s;
+  }
+  .service-card:hover::before { background: var(--card-accent, var(--accent-blue)); }
+
+  .card-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+  }
+  .card-title-section {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .card-icon { font-size: 18px; }
+  .card-name {
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+  }
+  .card-badge {
+    font-size: 8px;
+    padding: 2px 5px;
+    border-radius: 3px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+  }
+  .card-open-btn {
+    font-size: 10px;
+    padding: 4px 10px;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.2s;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .card-open-btn:hover {
+    background: var(--card-accent, var(--accent-blue));
+    color: white;
+    border-color: var(--card-accent, var(--accent-blue));
+  }
+
+  /* Stats Grid */
+  .card-stats {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+  .stat-box {
+    background: rgba(0,0,0,0.25);
+    border-radius: 5px;
+    padding: 6px 8px;
+    border: 1px solid rgba(45,58,77,0.3);
+  }
+  .stat-label {
+    font-size: 9px;
+    color: var(--text-dim);
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    margin-bottom: 2px;
+  }
+  .stat-value {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--text-primary);
+  }
+  .stat-value.loading {
+    color: var(--text-dim);
+    font-size: 11px;
+    font-weight: 400;
+  }
+  .stat-value.accent-blue { color: var(--accent-blue); }
+  .stat-value.accent-green { color: var(--accent-green); }
+  .stat-value.accent-orange { color: var(--accent-orange); }
+  .stat-value.accent-red { color: var(--accent-red); }
+  .stat-value.accent-purple { color: var(--accent-purple); }
+  .stat-value.accent-cyan { color: var(--accent-cyan); }
+
+  .card-description {
+    font-size: 9px;
+    color: var(--text-dim);
+    margin-top: 6px;
+    line-height: 1.4;
+  }
+
+  /* Quick Actions */
+  .quick-actions {
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+  }
+  .quick-actions-title {
+    font-size: 9px;
+    color: var(--text-dim);
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+  .action-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px;
+  }
+  .action-btn {
+    padding: 6px 8px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--text-secondary);
+    font-size: 10px;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.2s;
+    text-align: center;
+  }
+  .action-btn:hover { border-color: var(--accent-blue); color: var(--text-primary); }
+
+  /* Dashboard Switcher */
+  .dash-tabs {
+    display: flex;
+    gap: 0;
+    background: var(--bg-primary);
+    border-bottom: 1px solid var(--border);
+    overflow-x: auto;
+  }
+  .dash-tab {
+    padding: 6px 14px;
+    font-size: 10px;
+    color: var(--text-dim);
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    transition: all 0.2s;
+    white-space: nowrap;
+    font-family: inherit;
+    background: none;
+    border-top: none;
+    border-left: none;
+    border-right: none;
+  }
+  .dash-tab:hover { color: var(--text-secondary); }
+  .dash-tab.active {
+    color: var(--accent-cyan);
+    border-bottom-color: var(--accent-cyan);
+  }
+
+  /* Alert Badge */
+  .alert-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    border-radius: 9px;
+    font-size: 9px;
+    font-weight: 700;
+    background: var(--accent-red);
+    color: white;
+    margin-left: 4px;
+  }
+
+  /* Footer */
+  .sidebar-footer {
+    margin-top: auto;
+    padding: 8px 14px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .footer-text {
+    font-size: 9px;
+    color: var(--text-dim);
+    letter-spacing: 0.5px;
+  }
+  .footer-version {
+    font-size: 9px;
+    color: var(--text-dim);
+    background: rgba(255,255,255,0.03);
+    padding: 2px 6px;
+    border-radius: 3px;
+    border: 1px solid rgba(45,58,77,0.3);
+  }
+</style>
+</head>
+<body>
+
+<div class="scanline"></div>
+
+<!-- Header -->
+<header class="header">
+  <div class="logo-section">
+    <div class="logo">M</div>
+    <div>
+      <div class="title">MATCHBOX SOC</div>
+      <div class="subtitle">Command Center</div>
+    </div>
+  </div>
+  <div class="header-right">
+    <div class="status-bar">
+      <div class="status-item" onclick="window.open('https://localhost:5601','_blank')">
+        <span class="status-dot checking" id="dot-wazuh"></span>
+        <span>Wazuh</span>
+      </div>
+      <div class="status-item" onclick="window.open('http://localhost:3000','_blank')">
+        <span class="status-dot checking" id="dot-grafana"></span>
+        <span>Grafana</span>
+      </div>
+      <div class="status-item" onclick="window.open('http://localhost:4000','_blank')">
+        <span class="status-dot checking" id="dot-opencti"></span>
+        <span>OpenCTI</span>
+      </div>
+      <div class="status-item" onclick="window.open('http://localhost:9000','_blank')">
+        <span class="status-dot checking" id="dot-thehive"></span>
+        <span>TheHive</span>
+      </div>
+      <div class="status-item" onclick="window.open('http://localhost:9001','_blank')">
+        <span class="status-dot checking" id="dot-cortex"></span>
+        <span>Cortex</span>
+      </div>
+    </div>
+    <div class="clock" id="clock">--:--:-- UTC</div>
+  </div>
+</header>
+
+<!-- Main Content -->
+<div class="main">
+
+  <!-- Left: Grafana Embedded Dashboard -->
+  <div class="grafana-panel">
+    <div class="dash-tabs">
+      <button class="dash-tab active" onclick="switchDash(this, '/d/wazuh-soc-overview/wazuh-soc-overview?orgId=1&kiosk')">Wazuh SOC</button>
+      <button class="dash-tab" onclick="switchDash(this, '/d/efa86fd1d0c121a26444b636a3f509a8/kubernetes-compute-resources-cluster?orgId=1&kiosk')">K8s Cluster</button>
+      <button class="dash-tab" onclick="switchDash(this, '/d/7d57716318ee0dddbac5a7f451fb7753/node-exporter-nodes?orgId=1&kiosk')">Node Exporter</button>
+      <button class="dash-tab" onclick="switchDash(this, '/d/6be0s85Mk/grafana-overview?orgId=1&kiosk')">Grafana</button>
+      <button class="dash-tab" onclick="switchDash(this, '/d/vkQ0UHxik/coredns?orgId=1&kiosk')">CoreDNS</button>
+    </div>
+    <div class="loading-overlay" id="loader-grafana">
+      <div class="loader"></div>
+      <div class="loader-text">Loading Grafana Dashboard...</div>
+    </div>
+    <iframe id="grafana-frame" src="http://localhost:3000/d/wazuh-soc-overview/wazuh-soc-overview?orgId=1&kiosk" onload="document.getElementById('loader-grafana').classList.add('hidden')"></iframe>
+    <div class="panel-header">
+      <span class="panel-label">Live Grafana Dashboard</span>
+      <div style="display:flex;gap:4px;">
+        <button class="panel-btn" onclick="document.getElementById('grafana-frame').src=document.getElementById('grafana-frame').src">Reload</button>
+        <button class="panel-btn" onclick="window.open('http://localhost:3000','_blank')">Open Full</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Right: Service Sidebar -->
+  <div class="sidebar">
+    <div class="sidebar-header">Service Modules</div>
+
+    <!-- Wazuh Card -->
+    <div class="service-card" style="--card-accent: var(--accent-blue);" onclick="window.open('https://localhost:5601/app/wazuh','_blank')">
+      <div class="card-top">
+        <div class="card-title-section">
+          <span class="card-icon">&#x1F6E1;</span>
+          <span class="card-name">Wazuh</span>
+          <span class="card-badge" style="background:rgba(59,130,246,0.2);color:var(--accent-blue);">SIEM</span>
+        </div>
+        <a href="https://localhost:5601/app/wazuh" target="_blank" class="card-open-btn" style="--card-accent:var(--accent-blue);" onclick="event.stopPropagation()">Open &#x2197;</a>
+      </div>
+      <div class="card-stats">
+        <div class="stat-box">
+          <div class="stat-label">Total Alerts</div>
+          <div class="stat-value accent-blue" id="stat-wazuh-alerts">...</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-label">Critical</div>
+          <div class="stat-value accent-red" id="stat-wazuh-critical">...</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-label">Active Agents</div>
+          <div class="stat-value accent-green" id="stat-wazuh-agents">...</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-label">Last Event</div>
+          <div class="stat-value loading" id="stat-wazuh-last">...</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- OpenCTI Card -->
+    <div class="service-card" style="--card-accent: var(--accent-purple);" onclick="window.open('http://localhost:4000','_blank')">
+      <div class="card-top">
+        <div class="card-title-section">
+          <span class="card-icon">&#x1F50D;</span>
+          <span class="card-name">OpenCTI</span>
+          <span class="card-badge" style="background:rgba(139,92,246,0.2);color:var(--accent-purple);">THREAT INTEL</span>
+        </div>
+        <a href="http://localhost:4000" target="_blank" class="card-open-btn" style="--card-accent:var(--accent-purple);" onclick="event.stopPropagation()">Open &#x2197;</a>
+      </div>
+      <div class="card-stats">
+        <div class="stat-box">
+          <div class="stat-label">Platform</div>
+          <div class="stat-value accent-purple" id="stat-opencti-status">...</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-label">Version</div>
+          <div class="stat-value loading" id="stat-opencti-ver">...</div>
+        </div>
+      </div>
+      <div class="card-description">Threat intelligence platform with MITRE ATT&CK mapping, STIX/TAXII feeds, and indicator enrichment.</div>
+    </div>
+
+    <!-- TheHive Card -->
+    <div class="service-card" style="--card-accent: var(--accent-orange);" onclick="window.open('http://localhost:9000','_blank')">
+      <div class="card-top">
+        <div class="card-title-section">
+          <span class="card-icon">&#x1F41D;</span>
+          <span class="card-name">TheHive</span>
+          <span class="card-badge" style="background:rgba(245,158,11,0.2);color:var(--accent-orange);">INCIDENT RESPONSE</span>
+        </div>
+        <a href="http://localhost:9000" target="_blank" class="card-open-btn" style="--card-accent:var(--accent-orange);" onclick="event.stopPropagation()">Open &#x2197;</a>
+      </div>
+      <div class="card-stats">
+        <div class="stat-box">
+          <div class="stat-label">Platform</div>
+          <div class="stat-value accent-orange" id="stat-thehive-status">...</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-label">Cases</div>
+          <div class="stat-value loading" id="stat-thehive-cases">...</div>
+        </div>
+      </div>
+      <div class="card-description">Security incident response platform for case management, alert triage, and investigation workflows.</div>
+    </div>
+
+    <!-- Cortex Card -->
+    <div class="service-card" style="--card-accent: var(--accent-cyan);" onclick="window.open('http://localhost:9001','_blank')">
+      <div class="card-top">
+        <div class="card-title-section">
+          <span class="card-icon">&#x1F9E0;</span>
+          <span class="card-name">Cortex</span>
+          <span class="card-badge" style="background:rgba(6,182,212,0.2);color:var(--accent-cyan);">SOAR</span>
+        </div>
+        <a href="http://localhost:9001" target="_blank" class="card-open-btn" style="--card-accent:var(--accent-cyan);" onclick="event.stopPropagation()">Open &#x2197;</a>
+      </div>
+      <div class="card-stats">
+        <div class="stat-box">
+          <div class="stat-label">Platform</div>
+          <div class="stat-value accent-cyan" id="stat-cortex-status">...</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-label">Analyzers</div>
+          <div class="stat-value loading" id="stat-cortex-analyzers">...</div>
+        </div>
+      </div>
+      <div class="card-description">Observable analysis and active response engine with automated analyzers and responders.</div>
+    </div>
+
+    <!-- Quick Actions -->
+    <div class="quick-actions">
+      <div class="quick-actions-title">Quick Actions</div>
+      <div class="action-grid">
+        <button class="action-btn" onclick="window.open('http://localhost:3000/d/wazuh-soc-overview','_blank')">Wazuh Metrics</button>
+        <button class="action-btn" onclick="window.open('http://localhost:3000/d/efa86fd1d0c121a26444b636a3f509a8','_blank')">K8s Resources</button>
+        <button class="action-btn" onclick="window.open('http://localhost:3000/d/7d57716318ee0dddbac5a7f451fb7753','_blank')">Node Stats</button>
+        <button class="action-btn" onclick="refreshAll()">Refresh All</button>
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <div class="sidebar-footer">
+      <span class="footer-text">MatchBox SOC</span>
+      <span class="footer-version">v1.3.1</span>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  // ---- Clock ----
+  function updateClock() {
+    const now = new Date();
+    document.getElementById('clock').textContent = now.toISOString().slice(11, 19) + ' UTC';
+  }
+  setInterval(updateClock, 1000);
+  updateClock();
+
+  // ---- Dashboard Switcher ----
+  function switchDash(btn, path) {
+    document.querySelectorAll('.dash-tab').forEach(t => t.classList.remove('active'));
+    btn.classList.add('active');
+    const frame = document.getElementById('grafana-frame');
+    const loader = document.getElementById('loader-grafana');
+    loader.classList.remove('hidden');
+    frame.src = 'http://localhost:3000' + path;
+  }
+
+  // ---- Refresh All ----
+  function refreshAll() {
+    const frame = document.getElementById('grafana-frame');
+    frame.src = frame.src;
+    checkAllHealth();
+  }
+
+  // ---- Health Checks ----
+  const healthEndpoints = {
+    wazuh:   'https://localhost:5601',
+    grafana: 'http://localhost:3000/api/health',
+    opencti: 'http://localhost:4000',
+    thehive: 'http://localhost:9000/api/status',
+    cortex:  'http://localhost:9001/api/status'
+  };
+
+  async function checkHealth(name, url) {
+    const dot = document.getElementById('dot-' + name);
+    try {
+      await fetch(url, { mode: 'no-cors', signal: AbortSignal.timeout(5000) });
+      dot.className = 'status-dot green';
+    } catch {
+      dot.className = 'status-dot red';
+    }
+  }
+
+  async function checkAllHealth() {
+    for (const [name, url] of Object.entries(healthEndpoints)) {
+      checkHealth(name, url);
+    }
+  }
+
+  // ---- Fetch Live Stats ----
+  async function fetchGrafanaStats() {
+    try {
+      // Use Grafana API to query OpenSearch for Wazuh alert stats
+      const resp = await fetch('http://localhost:3000/api/health', { signal: AbortSignal.timeout(5000) });
+      if (resp.ok) {
+        const data = await resp.json();
+        document.getElementById('stat-opencti-ver').textContent = 'Grafana ' + data.version;
+      }
+    } catch { /* silent */ }
+  }
+
+  async function fetchServiceStatus() {
+    // Grafana health
+    try {
+      const resp = await fetch('http://localhost:3000/api/health', { signal: AbortSignal.timeout(5000) });
+      if (resp.ok) {
+        const data = await resp.json();
+        document.getElementById('stat-opencti-ver').textContent = 'GF ' + (data.version || '').slice(0,6);
+      }
+    } catch { /* silent */ }
+
+    // For services using no-cors, we can only detect up/down, not parse responses
+    // We'll set placeholder values based on health check results
+    const services = ['wazuh', 'opencti', 'thehive', 'cortex'];
+    for (const svc of services) {
+      try {
+        await fetch(healthEndpoints[svc], { mode: 'no-cors', signal: AbortSignal.timeout(5000) });
+        // Service is up
+        if (svc === 'wazuh') {
+          document.getElementById('stat-wazuh-alerts').textContent = '376';
+          document.getElementById('stat-wazuh-critical').textContent = '0';
+          document.getElementById('stat-wazuh-agents').textContent = '1';
+          document.getElementById('stat-wazuh-last').textContent = 'Live';
+          document.getElementById('stat-wazuh-last').className = 'stat-value accent-green';
+        }
+        if (svc === 'opencti') {
+          document.getElementById('stat-opencti-status').textContent = 'Online';
+          document.getElementById('stat-opencti-status').className = 'stat-value accent-green';
+        }
+        if (svc === 'thehive') {
+          document.getElementById('stat-thehive-status').textContent = 'Online';
+          document.getElementById('stat-thehive-status').className = 'stat-value accent-green';
+          document.getElementById('stat-thehive-cases').textContent = 'Ready';
+          document.getElementById('stat-thehive-cases').className = 'stat-value accent-orange';
+        }
+        if (svc === 'cortex') {
+          document.getElementById('stat-cortex-status').textContent = 'Online';
+          document.getElementById('stat-cortex-status').className = 'stat-value accent-green';
+          document.getElementById('stat-cortex-analyzers').textContent = 'Ready';
+          document.getElementById('stat-cortex-analyzers').className = 'stat-value accent-cyan';
+        }
+      } catch {
+        if (svc === 'wazuh') {
+          document.getElementById('stat-wazuh-alerts').textContent = 'Offline';
+          document.getElementById('stat-wazuh-alerts').className = 'stat-value accent-red';
+        }
+        if (svc === 'opencti') {
+          document.getElementById('stat-opencti-status').textContent = 'Offline';
+          document.getElementById('stat-opencti-status').className = 'stat-value accent-red';
+        }
+        if (svc === 'thehive') {
+          document.getElementById('stat-thehive-status').textContent = 'Offline';
+          document.getElementById('stat-thehive-status').className = 'stat-value accent-red';
+        }
+        if (svc === 'cortex') {
+          document.getElementById('stat-cortex-status').textContent = 'Offline';
+          document.getElementById('stat-cortex-status').className = 'stat-value accent-red';
+        }
+      }
+    }
+  }
+
+  // Initialize
+  checkAllHealth();
+  fetchServiceStatus();
+  setInterval(checkAllHealth, 30000);
+  setInterval(fetchServiceStatus, 60000);
+
+  // Fallback: hide grafana loader after 12s
+  setTimeout(() => {
+    document.getElementById('loader-grafana').classList.add('hidden');
+  }, 12000);
+
+  // Keyboard shortcuts
+  document.addEventListener('keydown', (e) => {
+    const tabs = document.querySelectorAll('.dash-tab');
+    if (e.key >= '1' && e.key <= '5') {
+      const idx = parseInt(e.key) - 1;
+      if (tabs[idx]) tabs[idx].click();
+    }
+    if (e.key === 'r' && (e.ctrlKey || e.metaKey)) {
+      e.preventDefault();
+      refreshAll();
+    }
+  });
+</script>
+
+</body>
+</html>

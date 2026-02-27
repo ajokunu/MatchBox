@@ -6,9 +6,13 @@
 *.pem
 *.crt
 
-# Node modules (MCP servers)
+# Node modules (MCP servers + dashboard)
 node_modules/
 dist/
+
+# SvelteKit build artifacts
+dashboard/.svelte-kit/
+dashboard/build/
 
 # OS files
 .DS_Store
