@@ -21,16 +21,20 @@ Mac Mini M4 with 16GB RAM. Slim configuration with phased startup:
 ## Security
 - All credentials in K8s Secrets (template: `k8s/shared/secrets.yaml`), never hardcoded
 - OpenSearch security enabled with internal user auth
-- TLS on Traefik IngressRoutes (self-signed cert: `soc-tls-cert`)
+- TLS 1.2+ on Traefik IngressRoutes with ECDHE cipher suites (self-signed cert: `soc-tls-cert`)
+- cert-manager ClusterIssuer for automated cert generation (`k8s/ingress/self-signed-issuer.yaml`)
+- NetworkPolicies: default-deny ingress + 18 explicit allow rules across 5 namespaces
 - Redis auth enabled, NFS root_squash, Cortex RBAC with PVC verbs
 - All container images pinned (no `:latest` tags)
-- MCP servers have 10s request timeouts and startup connectivity checks
+- MCP servers: 10s request timeouts, 50KB response truncation, `[WRITE]` annotations on mutations
+- Compliance audited against ISO 27001, NIST 800-53, and OWASP Top 10 for LLMs
 
 ## Dashboard Integration
 SOC content is integrated into the MatchBox dashboard at `http://localhost:3099`:
-- **SOC tab**: Architecture, components, resource budget, MCP tools, ports
-- **Blog tab**: Medium-style article about the project
-- Source: `../ServiceMonitor/public/index.html`
+- **5 tabs**: Overview, Architecture, Components, MCP Servers, Blog
+- **Blog tab**: Medium-style article about building the SOC on 16GB
+- Standalone version: `public/index.html`
+- Integrated source: `../ServiceMonitor/public/index.html`
 
 ## Directory Structure
 ```

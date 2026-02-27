@@ -2,6 +2,35 @@
 
 All notable changes to MatchBox are documented here.
 
+## [1.1.0] — 2026-02-26
+
+### Compliance Hardening & Dashboard Update
+
+#### Security Hardening
+- **NetworkPolicies** — 23 rules across 5 namespaces (default-deny + explicit allow). ISO 27001 A.8.3/A.8.20, NIST AC-4/SC-7
+- **TLS 1.2+ enforcement** — TLSOption with ECDHE cipher suites on Traefik ingress. NIST SC-13
+- **Self-signed cert issuer** — cert-manager ClusterIssuer + Certificate resource for automated TLS cert management
+- **MCP response truncation** — 50KB `formatResponse()` limit on all 21 MCP tools. OWASP LLM04/LLM05
+- **Write operation annotations** — `[WRITE]` prefix on 5 mutation tool descriptions for human-in-the-loop safety. OWASP LLM08
+- **GraphQL error truncation** — 500-char limit on OpenCTI error messages. OWASP LLM06
+- **Wazuh Manager security context** — `automountServiceAccountToken: false`, `allowPrivilegeEscalation: false`
+- **Input validation** — `safeId` regex on all ID parameters to prevent path traversal
+
+#### Version Updates
+- Wazuh Manager: 4.11.1 → 4.14.3 (matches Agent version)
+- MCP SDK: `@modelcontextprotocol/sdk` ^1.0.0 → ^1.9.0 (all 3 servers)
+
+#### Dashboard
+- Added **Blog tab** (#5) — Medium-style article about building the home SOC
+- Updated version badge to v1.1.0
+
+#### Compliance Audits Completed
+- ISO 27001:2022 Annex A — 12 PASS, 17 PARTIAL, 2 FAIL
+- NIST 800-53 Rev 5 — 16 PASS, 17 PARTIAL, 4 FAIL
+- OWASP Top 10 for LLM Applications 2025 — 35 findings addressed
+
+---
+
 ## [1.0.0] — 2026-02-26
 
 ### Initial Release

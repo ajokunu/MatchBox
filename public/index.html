@@ -137,6 +137,56 @@
     .ns-opencti { background: #0c4a6e; color: #7dd3fc; }
     .ns-monitoring { background: #431407; color: #fdba74; }
 
+    /* -- Blog (Medium-style) ---------------------------------------- */
+    .blog-article { max-width: 720px; margin: 0 auto; }
+    .blog-article h1 {
+      font-size: 2rem; font-weight: 800; line-height: 1.25; margin-bottom: 12px;
+      color: #f1f5f9; letter-spacing: -0.02em;
+    }
+    .blog-article .blog-meta {
+      color: #64748b; font-size: 0.85rem; margin-bottom: 32px;
+      padding-bottom: 24px; border-bottom: 1px solid #334155;
+    }
+    .blog-article .blog-meta strong { color: #94a3b8; }
+    .blog-article p {
+      font-size: 1.05rem; line-height: 1.8; color: #cbd5e1; margin-bottom: 24px;
+    }
+    .blog-article h2 {
+      font-size: 1.4rem; font-weight: 700; color: #f1f5f9; margin: 40px 0 16px;
+      letter-spacing: -0.01em;
+    }
+    .blog-article h3 {
+      font-size: 1.15rem; font-weight: 600; color: #e2e8f0; margin: 32px 0 12px;
+    }
+    .blog-article blockquote {
+      border-left: 3px solid #3b82f6; padding: 12px 20px; margin: 24px 0;
+      background: rgba(59,130,246,0.06); border-radius: 0 8px 8px 0;
+      font-style: italic; color: #94a3b8;
+    }
+    .blog-article ul, .blog-article ol {
+      margin: 0 0 24px 24px; line-height: 1.8; color: #cbd5e1; font-size: 1.05rem;
+    }
+    .blog-article li { margin-bottom: 8px; }
+    .blog-article code {
+      background: #1e293b; padding: 2px 6px; border-radius: 4px;
+      font-family: 'SF Mono','Fira Code',monospace; font-size: 0.9rem; color: #7dd3fc;
+    }
+    .blog-article .blog-img-caption {
+      text-align: center; color: #475569; font-size: 0.82rem; margin: -16px 0 24px;
+      font-style: italic;
+    }
+    .blog-article .highlight-box {
+      background: #1e293b; border: 1px solid #334155; border-radius: 12px;
+      padding: 20px; margin: 24px 0;
+    }
+    .blog-article .highlight-box h4 {
+      font-size: 0.9rem; font-weight: 700; color: #3b82f6; margin-bottom: 8px;
+      text-transform: uppercase; letter-spacing: 0.05em;
+    }
+    .blog-article hr {
+      border: none; border-top: 1px solid #334155; margin: 40px 0;
+    }
+
     /* -- Responsive ------------------------------------------------ */
     @media (max-width: 768px) {
       .grid { grid-template-columns: 1fr; }
@@ -145,6 +195,8 @@
       .tabs { padding: 0 12px; }
       .tab { padding: 10px 14px; font-size: 0.78rem; }
       .tab-content { padding: 16px; }
+      .blog-article h1 { font-size: 1.5rem; }
+      .blog-article p, .blog-article ul, .blog-article ol { font-size: 0.95rem; }
     }
   </style>
 </head>
@@ -180,7 +232,7 @@
 <!-- ================================================================ -->
 <div class="topbar">
   <h1>MatchBox</h1>
-  <span class="version-pill">v1.0.0</span>
+  <span class="version-pill">v1.1.0</span>
 </div>
 
 <!-- ================================================================ -->
@@ -191,6 +243,7 @@
   <div class="tab" data-tab="architecture">Architecture</div>
   <div class="tab" data-tab="components">Components</div>
   <div class="tab" data-tab="mcp">MCP Servers</div>
+  <div class="tab" data-tab="blog">Blog</div>
 </div>
 
 <!-- ================================================================ -->
@@ -726,6 +779,151 @@
 
 <span class="string">"What MITRE techniques are associated with credential access?"</span>
 <span class="comment"># -> opencti-mcp: get-attack-patterns(search="credential access")</span></div>
+</div>
+
+<!-- ================================================================ -->
+<!-- TAB 5: BLOG POST                                                 -->
+<!-- ================================================================ -->
+<div class="tab-content" id="tab-blog">
+<article class="blog-article">
+
+<h1>I Built a Full SOC on a Mac Mini. Here's What I Learned.</h1>
+<div class="blog-meta">
+  <strong>Aaron</strong> &middot; February 2026 &middot; 8 min read
+</div>
+
+<p>I wanted a home security operations center. Not a toy. Not a dashboard that just looks cool. A real SOC &mdash; one that detects threats, enriches indicators with threat intelligence, and manages incidents through a proper workflow. And I wanted it running on a single Mac Mini M4 with 16 gigs of RAM.</p>
+
+<p>Everyone told me it couldn't be done. Enterprise SOC platforms want 64GB minimum. Wazuh alone recommends 8GB for the manager. OpenCTI's docs say "16GB for the platform, separate from Elasticsearch." Add TheHive, Cortex, Grafana, and all the supporting infrastructure? You're looking at 40-60GB easy.</p>
+
+<p>I did it in 10.</p>
+
+<h2>Why Build a Home SOC?</h2>
+
+<p>I've been building projects that push what's possible on constrained hardware. My ServiceMonitor tracks 40+ services on a single dashboard. My FlightTracker pulls live ADS-B data. But security was the missing piece. I have devices on my home network &mdash; a Linux server, a Windows PC, the Mac Mini itself &mdash; and I had zero visibility into what was actually happening on them.</p>
+
+<p>Sure, I could install CrowdStrike or SentinelOne. But where's the fun in that? I wanted to understand the full pipeline: how alerts get generated, how threat intelligence enriches them, how incidents get tracked and resolved. The only way to truly learn it is to build it yourself.</p>
+
+<h2>The Stack</h2>
+
+<p>After weeks of research, I landed on four core platforms:</p>
+
+<ul>
+  <li><strong>Wazuh</strong> &mdash; Open-source SIEM/XDR. Agents on every endpoint, centralized manager for rule evaluation, built-in vulnerability scanning and file integrity monitoring. It's the eyes and ears.</li>
+  <li><strong>OpenCTI</strong> &mdash; Threat intelligence platform. Aggregates data from MITRE ATT&CK, AlienVault OTX, AbuseIPDB, and VirusTotal into a STIX2 knowledge graph. It's the context engine.</li>
+  <li><strong>TheHive + Cortex</strong> &mdash; Incident response platform. TheHive manages cases and alerts. Cortex runs automated analysis (VirusTotal lookups, IP reputation checks) as Kubernetes Jobs. It's the workflow.</li>
+  <li><strong>Prometheus + Grafana</strong> &mdash; Monitoring and visualization. Tracks cluster health and provides dashboards for Wazuh security events. It's the visibility layer.</li>
+</ul>
+
+<p>All of this runs on Kubernetes (k3s, specifically) inside a Lima virtual machine. Lima uses Apple's native VZ framework, so the VM runs at near-native speed on Apple Silicon with Rosetta 2 handling any x86 containers transparently.</p>
+
+<h2>The 16GB Challenge</h2>
+
+<p>Here's where it gets interesting. macOS itself takes about 5GB. That leaves roughly 10GB for the VM. And I need to fit:</p>
+
+<div class="highlight-box">
+  <h4>Resource Budget</h4>
+  <ul style="margin:0;padding-left:20px;color:#cbd5e1;font-size:0.95rem">
+    <li>OpenSearch (shared index backend): 2GB</li>
+    <li>Wazuh Manager + Dashboard + Agents: 1.8GB</li>
+    <li>Redis + RabbitMQ + MinIO + NFS: 1.2GB</li>
+    <li>Prometheus + Grafana: 0.8GB</li>
+    <li>OpenCTI Platform + Worker: 2.0GB</li>
+    <li>TheHive + Cortex: 1.5GB</li>
+    <li>k3s system overhead: 0.5GB</li>
+  </ul>
+</div>
+
+<p>That's about 10GB &mdash; exactly what we have. Zero room for waste.</p>
+
+<p>The key insight was <strong>shared infrastructure</strong>. In a typical enterprise deployment, each platform runs its own Elasticsearch, its own Redis, its own message queue. That's fine when you have hundreds of gigs. On 16GB, it's suicide. So I put OpenSearch, Redis, RabbitMQ, MinIO, and an NFS server in a shared namespace. Every service connects to the same instances, isolated by index prefixes and authentication.</p>
+
+<p>The second insight was <strong>phased startup</strong>. Not everything needs to run 24/7. Wazuh and the shared infrastructure are always-on (~3.2GB). TheHive, Cortex, and OpenCTI scale up only during investigations. Threat intel connectors run as CronJobs &mdash; they spin up nightly, pull updates, and exit. VirusTotal sits at zero replicas until you need on-demand enrichment.</p>
+
+<h2>The Architecture</h2>
+
+<p>Everything runs in five Kubernetes namespaces:</p>
+
+<ul>
+  <li><code>shared</code> &mdash; OpenSearch, Redis, RabbitMQ, MinIO, NFS</li>
+  <li><code>wazuh</code> &mdash; Manager, Dashboard, Agent DaemonSet</li>
+  <li><code>thehive</code> &mdash; TheHive, Cortex, RBAC for analyzer Jobs</li>
+  <li><code>opencti</code> &mdash; Platform, workers, connector CronJobs</li>
+  <li><code>monitoring</code> &mdash; Prometheus, Grafana, Alertmanager</li>
+</ul>
+
+<p>Network segmentation is enforced with Kubernetes NetworkPolicies. Each namespace has a default-deny-ingress rule, then explicit allow rules for exactly the traffic that needs to flow. OpenSearch accepts connections from wazuh, thehive, opencti, and monitoring. Redis only talks to opencti. Traefik ingress from kube-system reaches the five web-facing dashboards. Nothing else gets through.</p>
+
+<p>Traefik handles TLS termination with a self-signed certificate, and a BasicAuth middleware adds a password layer on top of each application's own authentication. All credentials live in Kubernetes Secrets &mdash; never hardcoded in manifests.</p>
+
+<h2>The Detection Pipeline</h2>
+
+<p>Here's what happens when something suspicious occurs on the network:</p>
+
+<ol>
+  <li>A Wazuh agent (running as a DaemonSet on every k3s node) detects the event &mdash; maybe a failed SSH login, a modified system file, or a known vulnerability.</li>
+  <li>The agent forwards the log to the Wazuh Manager, which evaluates it against detection rules (both built-in and custom).</li>
+  <li>If the alert is level 7 or higher, a custom Python script (<code>w2thive.py</code>) creates a TheHive alert with extracted observables (IPs, domains, hashes, filenames).</li>
+  <li>An analyst (or Claude, via MCP) triages the alert. If it's worth investigating, it becomes a case.</li>
+  <li>Cortex analyzers automatically check the observables against VirusTotal, AbuseIPDB, URLhaus, MaxMind GeoIP, and FileInfo.</li>
+  <li>OpenCTI enriches the indicators with threat intelligence context &mdash; linking them to known campaigns, MITRE ATT&CK techniques, and related IOCs.</li>
+</ol>
+
+<p>The entire pipeline is automated. From detection to enrichment, it happens without human intervention. The analyst only steps in for the decision points: is this a real incident? What's the response?</p>
+
+<h2>The MCP Integration</h2>
+
+<p>This is the part I'm most excited about. I built three custom MCP (Model Context Protocol) servers that give Claude Code direct access to the SOC:</p>
+
+<ul>
+  <li><strong>wazuh-mcp</strong> &mdash; 7 tools for querying alerts, searching agents, checking vulnerabilities, and exploring detection rules.</li>
+  <li><strong>thehive-mcp</strong> &mdash; 8 tools for managing cases, adding observables, running analyzers, and merging alerts.</li>
+  <li><strong>opencti-mcp</strong> &mdash; 6 tools for searching threat indicators, browsing reports, exploring MITRE ATT&CK patterns, and requesting enrichment.</li>
+</ul>
+
+<p>In practice, this means I can type "show me all critical Wazuh alerts from the last 24 hours" and Claude will query the Wazuh API, parse the results, and give me a summary. I can say "create a case for the brute force attack on 192.168.1.50 and run VirusTotal on the source IP" and Claude will orchestrate across TheHive and Cortex to make it happen.</p>
+
+<p>Every MCP server has 10-second request timeouts, response truncation at 50KB (to avoid flooding the LLM context), startup connectivity checks, and write operations are clearly labeled so Claude knows when it's about to modify data.</p>
+
+<blockquote>It's like having a junior SOC analyst who never sleeps, never gets bored, and can correlate across three different platforms in seconds.</blockquote>
+
+<h2>Security Hardening</h2>
+
+<p>I ran three compliance audits against the deployment: ISO 27001, NIST 800-53, and OWASP Top 10 for LLM Applications. The results drove a series of hardening changes:</p>
+
+<ul>
+  <li>NetworkPolicies for microsegmentation across all 5 namespaces</li>
+  <li>TLS 1.2+ with strong cipher suites on all ingress routes</li>
+  <li>OpenSearch security plugin enabled with internal user authentication</li>
+  <li>Redis authentication, NFS root_squash, Cortex RBAC scoped to minimal permissions</li>
+  <li>All container images pinned to specific version tags (no <code>:latest</code>)</li>
+  <li>MCP response size limits to prevent model context overflow</li>
+  <li>Write operation annotations for human-in-the-loop safety</li>
+</ul>
+
+<p>Is it enterprise-grade? No. There's no internal mTLS, no dedicated OpenSearch service accounts, no secret encryption at rest. But for a home lab running on 16GB, it's about as hardened as it gets without sacrificing functionality.</p>
+
+<h2>What I'd Do Differently</h2>
+
+<p>If I were starting over with 32GB, I'd give OpenSearch its own 4GB heap, run dedicated Redis instances per service, and keep Cortex warm instead of cold-starting it for every investigation. I'd also add Suricata for network IDS and YARA for file scanning.</p>
+
+<p>The shared-infrastructure approach works, but it creates a single point of failure. If OpenSearch goes down, everything goes down. In a real SOC, that's unacceptable. In my home lab, it means I restart a pod and move on.</p>
+
+<h2>What's Next</h2>
+
+<p>I'm planning to add Wazuh agents to more devices on the network &mdash; my router, NAS, and a Raspberry Pi running Pi-hole. I want to build Grafana dashboards that show a unified security posture across all endpoints. And I want to train custom Wazuh detection rules that are specific to my network patterns.</p>
+
+<p>The MCP integration opens up possibilities I haven't even explored yet. Imagine a daily automated security briefing where Claude reviews overnight alerts, correlates them with threat intelligence, and presents a summary with recommended actions. That's not science fiction &mdash; the tools are all there. It just needs the right prompts.</p>
+
+<hr>
+
+<p>If you want to build your own, the entire project is on GitHub. Every YAML file is commented with the reasoning behind each decision. The deployment scripts handle everything from VM creation to stack deployment. And the MCP servers are plug-and-play with Claude Code.</p>
+
+<p>It took a lot of late nights, a lot of <code>kubectl describe pod</code> debugging, and more than a few OOMKilled restarts. But now I have a SOC on my desk that would have cost six figures a decade ago. And it runs on a machine the size of a lunch box.</p>
+
+<p>Not bad for 16 gigs.</p>
+
+</article>
 </div>
 
 <!-- ================================================================ -->
