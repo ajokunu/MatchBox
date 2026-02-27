@@ -100,7 +100,7 @@ Register in project `.claude/settings.json` (not global).
 ## Key Ports
 | Service | Internal Port | Ingress Path |
 |---------|--------------|--------------|
-| Wazuh Dashboard | 443 | /wazuh |
+| Wazuh Dashboard | 5601 | /wazuh |
 | TheHive | 9000 | /thehive |
 | Cortex | 9001 | /cortex |
 | OpenCTI | 4000 | /opencti |

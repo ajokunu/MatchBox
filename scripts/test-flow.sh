@@ -62,8 +62,8 @@ echo ""
 
 # 4. TheHive + Cortex
 echo "[4/7] TheHive + Cortex (Incident Response)"
-check "TheHive pod running" "kubectl get pods -n thehive -l app=thehive -o jsonpath='{.items[0].status.phase}' | grep -q Running"
-check "Cortex pod running" "kubectl get pods -n thehive -l app=cortex -o jsonpath='{.items[0].status.phase}' | grep -q Running"
+check "TheHive pod running" "kubectl get pods -n thehive -l app.kubernetes.io/name=thehive -o jsonpath='{.items[0].status.phase}' | grep -q Running"
+check "Cortex pod running" "kubectl get pods -n thehive -l app.kubernetes.io/name=cortex -o jsonpath='{.items[0].status.phase}' | grep -q Running"
 check "Cortex ServiceAccount exists" "kubectl get serviceaccount -n thehive cortex-job-runner"
 check "Cortex RBAC Role exists" "kubectl get role -n thehive cortex-job-runner"
 check "Cortex NFS PVC bound" "kubectl get pvc -n thehive cortex-shared-data -o jsonpath='{.status.phase}' | grep -q Bound"
@@ -71,9 +71,9 @@ echo ""
 
 # 5. OpenCTI
 echo "[5/7] OpenCTI (Threat Intelligence)"
-check "OpenCTI pod running" "kubectl get pods -n opencti -l app=opencti -o jsonpath='{.items[0].status.phase}' | grep -q Running"
-check "OpenCTI Worker running" "kubectl get pods -n opencti -l component=worker -o jsonpath='{.items[0].status.phase}' | grep -q Running"
-check "OpenCTI Secrets exist" "kubectl get secret -n opencti opencti-secrets"
+check "OpenCTI pod running" "kubectl get pods -n opencti -l app.kubernetes.io/name=opencti -o jsonpath='{.items[0].status.phase}' | grep -q Running"
+check "OpenCTI Worker running" "kubectl get pods -n opencti -l app.kubernetes.io/name=opencti-worker -o jsonpath='{.items[0].status.phase}' | grep -q Running"
+check "OpenCTI Secrets exist" "kubectl get secret -n opencti soc-opencti-secrets"
 check "MITRE ATT&CK CronJob exists" "kubectl get cronjob -n opencti opencti-connector-mitre"
 check "AlienVault OTX CronJob exists" "kubectl get cronjob -n opencti opencti-connector-alienvault"
 check "AbuseIPDB CronJob exists" "kubectl get cronjob -n opencti opencti-connector-abuseipdb"

@@ -37,9 +37,18 @@ spec:
         app.kubernetes.io/name: cortex
     spec:
       serviceAccountName: cortex-job-runner
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
       containers:
         - name: cortex
           image: thehiveproject/cortex:3.1.8
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop: ["ALL"]
           ports:
             - containerPort: 9001
               name: http

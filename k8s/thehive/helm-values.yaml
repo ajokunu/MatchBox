@@ -34,7 +34,7 @@ thehive:
       secretKeyFrom:
         secretKeyRef:
           name: soc-shared-secrets
-          key: minio-secret-key
+          key: minio-root-password
 
   # Cortex integration
   cortex:

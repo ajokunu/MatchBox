@@ -34,7 +34,7 @@ spec:
                 - name: OPENCTI_TOKEN
                   valueFrom:
                     secretKeyRef:
-                      name: opencti-secrets
+                      name: soc-opencti-secrets
                       key: admin-token
                 - name: CONNECTOR_ID
                   value: "mitre-attack-connector"

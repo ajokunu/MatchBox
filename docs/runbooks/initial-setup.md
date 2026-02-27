@@ -65,7 +65,7 @@ Add to `/etc/hosts`:
 ## Step 7: Update API Keys
 ```bash
 # Edit the OpenCTI secrets with real API keys:
-kubectl edit secret opencti-secrets -n opencti
+kubectl edit secret soc-opencti-secrets -n opencti
 
 # Required keys:
 # - admin-token: Get from OpenCTI UI after first login
@@ -83,7 +83,7 @@ kubectl edit secret opencti-secrets -n opencti
 kubectl edit configmap wazuh-manager-config -n wazuh
 # Replace THEHIVE_API_KEY_PLACEHOLDER with the real key
 # Restart Wazuh Manager to pick up the change
-kubectl rollout restart deployment wazuh-manager -n wazuh
+kubectl rollout restart statefulset wazuh-manager -n wazuh
 ```
 
 ## Step 9: Run End-to-End Test

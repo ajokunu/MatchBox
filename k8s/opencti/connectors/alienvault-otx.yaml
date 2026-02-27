@@ -34,7 +34,7 @@ spec:
                 - name: OPENCTI_TOKEN
                   valueFrom:
                     secretKeyRef:
-                      name: opencti-secrets
+                      name: soc-opencti-secrets
                       key: admin-token
                 - name: CONNECTOR_ID
                   value: "alienvault-otx-connector"
@@ -51,7 +51,7 @@ spec:
                 - name: ALIENVAULT_API_KEY
                   valueFrom:
                     secretKeyRef:
-                      name: opencti-secrets
+                      name: soc-opencti-secrets
                       key: alienvault-api-key
                 - name: ALIENVAULT_TLP
                   value: "White"

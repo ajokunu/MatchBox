@@ -59,7 +59,7 @@ spec:
       kind: Rule
       services:
         - name: wazuh-dashboard
-          port: 443
+          port: 5601
           scheme: https
       middlewares:
         - name: soc-basic-auth

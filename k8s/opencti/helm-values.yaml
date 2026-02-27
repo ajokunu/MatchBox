@@ -47,17 +47,17 @@ opencti:
       valueFrom:
         secretKeyRef:
           name: soc-opencti-secrets
-          key: opencti-admin-password
+          key: admin-password
     - name: RABBITMQ__PASSWORD
       valueFrom:
         secretKeyRef:
-          name: soc-opencti-secrets
+          name: soc-shared-secrets
           key: rabbitmq-password
     - name: MINIO__SECRET_KEY
       valueFrom:
         secretKeyRef:
           name: soc-shared-secrets
-          key: minio-secret-key
+          key: minio-root-password
     - name: APP__HEALTH_ACCESS_KEY
       valueFrom:
         secretKeyRef:

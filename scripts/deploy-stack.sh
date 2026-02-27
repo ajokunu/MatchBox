@@ -32,9 +32,30 @@ if ! kubectl cluster-info &>/dev/null; then
   exit 1
 fi
 
+# Validate secrets are not using placeholder values
+validate_secrets() {
+  local secrets_file="$K8S_DIR/shared/secrets.yaml"
+  if [ -f "$secrets_file" ]; then
+    if grep -q "Q0hBTkdFX01F" "$secrets_file" 2>/dev/null; then
+      echo "ERROR: secrets.yaml contains placeholder 'CHANGE_ME' values (base64-encoded)."
+      echo "  Edit $secrets_file and replace all placeholder passwords before deploying."
+      echo "  Template: $K8S_DIR/shared/secrets.yaml.example"
+      exit 1
+    fi
+  else
+    echo "WARNING: $secrets_file not found."
+    echo "  Copy $K8S_DIR/shared/secrets.yaml.example to $K8S_DIR/shared/secrets.yaml"
+    echo "  and fill in real credential values before deploying."
+    exit 1
+  fi
+}
+
 echo "=== MatchBox — Stack Deployment ==="
 echo "Component: $COMPONENT"
 echo ""
+
+# Always validate secrets before deploying
+validate_secrets
 
 deploy_namespaces() {
   echo "[namespaces] Creating Kubernetes namespaces..."
@@ -117,13 +138,30 @@ deploy_thehive() {
 deploy_opencti() {
   echo "[opencti] Deploying OpenCTI Threat Intelligence..."
 
-  echo "  Creating Secrets (placeholder — update with real API keys)..."
-  kubectl create secret generic opencti-secrets -n opencti \
-    --from-literal=admin-token="CHANGE_ME" \
-    --from-literal=alienvault-api-key="CHANGE_ME" \
-    --from-literal=abuseipdb-api-key="CHANGE_ME" \
-    --from-literal=virustotal-api-key="CHANGE_ME" \
+  echo "  Creating OpenCTI Secrets from environment variables..."
+  local octi_token="${OPENCTI_ADMIN_TOKEN:-}"
+  local octi_password="${OPENCTI_ADMIN_PASSWORD:-}"
+  local health_key="${OPENCTI_HEALTH_KEY:-}"
+  local otx_key="${ALIENVAULT_OTX_API_KEY:-}"
+  local abuse_key="${ABUSEIPDB_API_KEY:-}"
+  local vt_key="${VIRUSTOTAL_API_KEY:-}"
+  if [ -z "$octi_token" ] || [ -z "$octi_password" ]; then
+    echo "  ERROR: OPENCTI_ADMIN_TOKEN and OPENCTI_ADMIN_PASSWORD env vars are required."
+    echo "  Export before deploying: export OPENCTI_ADMIN_TOKEN=<token> OPENCTI_ADMIN_PASSWORD=<password>"
+    exit 1
+  fi
+  kubectl create secret generic soc-opencti-secrets -n opencti \
+    --from-literal=admin-token="$octi_token" \
+    --from-literal=admin-password="$octi_password" \
+    --from-literal=health-access-key="${health_key:-$(openssl rand -hex 16)}" \
+    --from-literal=alienvault-api-key="${otx_key:-placeholder}" \
+    --from-literal=abuseipdb-api-key="${abuse_key:-placeholder}" \
+    --from-literal=virustotal-api-key="${vt_key:-placeholder}" \
     --dry-run=client -o yaml | kubectl apply -f -
+  if [ -z "$otx_key" ] || [ -z "$abuse_key" ] || [ -z "$vt_key" ]; then
+    echo "  WARNING: Some threat intel API keys not set. Connectors will fail until updated."
+    echo "  Set: ALIENVAULT_OTX_API_KEY, ABUSEIPDB_API_KEY, VIRUSTOTAL_API_KEY"
+  fi
 
   echo "  Deploying OpenCTI platform..."
   helm upgrade --install opencti opencti/opencti \
