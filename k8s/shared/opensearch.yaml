@@ -43,48 +43,97 @@ securityConfig:
     securityConfigSecret: ""  # Uses default internal_users.yml
     dataComplete: false
 
+# Mount custom TLS certs with correct SANs for K8s service hostname
+secretMounts:
+  - name: opensearch-certs
+    secretName: opensearch-certs
+    path: /usr/share/opensearch/config/certs
+
 # Environment variables — credentials from K8s Secret
+# DISABLE_INSTALL_DEMO_CONFIG prevents the Docker entrypoint from appending
+# demo security config to opensearch.yml (which overrides our custom TLS certs).
 extraEnvs:
   - name: OPENSEARCH_INITIAL_ADMIN_PASSWORD
     valueFrom:
       secretKeyRef:
         name: soc-shared-secrets
         key: opensearch-password
+  - name: DISABLE_INSTALL_DEMO_CONFIG
+    value: "true"
 
-# Index lifecycle — auto-delete old indices to save disk
-# Wazuh alerts: 30-day retention
-# OpenCTI STIX data: 90-day retention
-# TheHive case data: no auto-delete
-# ISM policies are applied via index templates after OpenSearch starts.
-# Run scripts/setup-ism.sh or apply manually with the OpenSearch ISM API.
-extraConfig:
+# Custom opensearch.yml — uses "config" key (NOT "extraConfig" which doesn't exist in chart).
+# This creates a ConfigMap that the init container copies into the config directory.
+# Index lifecycle — ISM policies applied via scripts/setup-ism.sh after OpenSearch starts.
+config:
   opensearch.yml: |
     cluster.name: matchbox-soc
-    node.name: opensearch-0
     plugins.index_state_management.enabled: true
+    plugins.security.ssl.transport.pemcert_filepath: certs/esnode.pem
+    plugins.security.ssl.transport.pemkey_filepath: certs/esnode-key.pem
+    plugins.security.ssl.transport.pemtrustedcas_filepath: certs/root-ca.pem
+    plugins.security.ssl.transport.enforce_hostname_verification: false
+    plugins.security.ssl.http.enabled: true
+    plugins.security.ssl.http.pemcert_filepath: certs/esnode.pem
+    plugins.security.ssl.http.pemkey_filepath: certs/esnode-key.pem
+    plugins.security.ssl.http.pemtrustedcas_filepath: certs/root-ca.pem
+    plugins.security.allow_unsafe_democertificates: false
+    plugins.security.allow_default_init_securityindex: true
+    plugins.security.authcz.admin_dn:
+      - "CN=admin,O=MatchBox,C=US"
+    plugins.security.nodes_dn:
+      - "CN=opensearch-node,O=MatchBox,C=US"
+    plugins.security.audit.type: internal_opensearch
+    plugins.security.restapi.roles_enabled: ["all_access", "security_rest_api_access"]
+    plugins.security.system_indices.enabled: true
+    plugins.security.system_indices.indices:
+      [
+        ".opendistro-alerting-config",
+        ".opendistro-alerting-alert*",
+        ".opendistro-anomaly-results*",
+        ".opendistro-anomaly-detector*",
+        ".opendistro-anomaly-checkpoints",
+        ".opendistro-anomaly-detection-state",
+        ".opendistro-reports-*",
+        ".opensearch-notifications-*",
+        ".opensearch-notebooks",
+        ".opensearch-observability",
+        ".ql-datasources",
+        ".opendistro-asynchronous-search-response*",
+        ".replication-metadata-store",
+        ".opensearch-knn-models",
+        ".plugins-ml-agent",
+        ".plugins-ml-config",
+        ".plugins-ml-connector",
+        ".plugins-ml-controller",
+        ".plugins-ml-model-group",
+        ".plugins-ml-model",
+        ".plugins-ml-task",
+        ".plugins-ml-conversation-meta",
+        ".plugins-ml-conversation-interactions",
+        ".plugins-ml-memory-meta",
+        ".plugins-ml-memory-message",
+        ".plugins-ml-stop-words",
+      ]
 
-# Health probes — detect unresponsive OpenSearch before it causes cascading failures
+# Health probes — tcpSocket on port 9200
+# Note: httpGet probes would be ideal (/_cluster/health) but the security plugin
+# requires authentication on all HTTP endpoints, causing 401 probe failures.
+# tcpSocket is the standard approach for OpenSearch with security enabled.
 startupProbe:
-  httpGet:
-    path: /_cluster/health
+  tcpSocket:
     port: 9200
-    scheme: HTTPS
   initialDelaySeconds: 30
   periodSeconds: 10
   failureThreshold: 30
 readinessProbe:
-  httpGet:
-    path: /_cluster/health?local=true
+  tcpSocket:
     port: 9200
-    scheme: HTTPS
   initialDelaySeconds: 10
   periodSeconds: 15
   failureThreshold: 3
 livenessProbe:
-  httpGet:
-    path: /_cluster/health?local=true
+  tcpSocket:
     port: 9200
-    scheme: HTTPS
   initialDelaySeconds: 60
   periodSeconds: 30
   failureThreshold: 5

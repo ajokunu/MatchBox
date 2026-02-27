@@ -102,6 +102,9 @@ spec:
               mountPath: /var/ossec/etc/rules/custom
             - name: custom-decoders
               mountPath: /var/ossec/etc/decoders/custom
+            - name: opensearch-certs
+              mountPath: /etc/ssl/opensearch
+              readOnly: true
           readinessProbe:
             tcpSocket:
               port: 1514
@@ -127,6 +130,9 @@ spec:
         - name: custom-decoders
           configMap:
             name: wazuh-custom-decoders
+        - name: opensearch-certs
+          secret:
+            secretName: opensearch-certs
   volumeClaimTemplates:
     - metadata:
         name: data

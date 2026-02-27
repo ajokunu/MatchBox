@@ -40,7 +40,11 @@ data:
         <hosts>
           <host>https://opensearch-cluster-master.shared.svc.cluster.local:9200</host>
         </hosts>
-        <!-- SSL disabled for home lab (internal ClusterIP only) -->
+        <ssl>
+          <certificate_authorities>/etc/ssl/opensearch/root-ca.pem</certificate_authorities>
+          <certificate>/etc/ssl/opensearch/kirk.pem</certificate>
+          <key>/etc/ssl/opensearch/kirk-key.pem</key>
+        </ssl>
       </indexer>
 
       <!-- TheHive integration — forward alerts level 7+ to TheHive -->
