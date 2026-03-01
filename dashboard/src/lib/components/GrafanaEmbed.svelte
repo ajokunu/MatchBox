@@ -1,25 +1,51 @@
 <script lang="ts">
-  import { Loader2, ExternalLink, RefreshCw } from 'lucide-svelte';
+  import { LoaderCircle, ExternalLink, RefreshCw } from 'lucide-svelte';
   import { grafanaDashboards } from '$lib/config';
+  import { themeStore } from '$lib/stores';
 
   let { height = '100%' }: { height?: string } = $props();
 
   let activeTab = $state(0);
   let loading = $state(true);
-  let iframeSrc = $state('http://localhost:3000' + grafanaDashboards[0].path);
+  let reloading = $state(false);
+
+  // Build Grafana URL with theme param synced to dashboard theme
+  function buildSrc(index: number, theme: string): string {
+    if (index < 0 || index >= grafanaDashboards.length) return '';
+    const grafanaTheme = theme === 'dark' ? 'dark' : 'light';
+    return `http://localhost:3000${grafanaDashboards[index].path}&theme=${grafanaTheme}`;
+  }
+
+  let iframeSrc = $derived(buildSrc(activeTab, $themeStore));
+  let externalHref = $derived(
+    activeTab >= 0 && activeTab < grafanaDashboards.length
+      ? `http://localhost:3000${grafanaDashboards[activeTab].path.replace('&kiosk', '')}`
+      : '#'
+  );
 
   function switchDash(index: number) {
     activeTab = index;
     loading = true;
-    iframeSrc = 'http://localhost:3000' + grafanaDashboards[index].path;
   }
+
+  let loadError = $state(false);
 
   function reload() {
     loading = true;
-    const current = iframeSrc;
-    iframeSrc = '';
-    setTimeout(() => { iframeSrc = current; }, 50);
+    loadError = false;
+    reloading = true;
+    setTimeout(() => { reloading = false; }, 50);
   }
+
+  // Timeout: if iframe doesn't load in 10s, show error
+  $effect(() => {
+    if (loading && !reloading) {
+      const timer = setTimeout(() => {
+        if (loading) { loadError = true; loading = false; }
+      }, 10_000);
+      return () => clearTimeout(timer);
+    }
+  });
 </script>
 
 <div class="grafana-embed" style="height: {height}">
@@ -38,7 +64,7 @@
         <RefreshCw size={12} />
       </button>
       <a
-        href="http://localhost:3000{grafanaDashboards[activeTab].path.replace('&kiosk', '')}"
+        href={externalHref}
         target="_blank"
         rel="noopener"
         class="tab-btn"
@@ -52,15 +78,22 @@
   <div class="frame-container">
     {#if loading}
       <div class="loading-overlay">
-        <Loader2 size={28} class="spinner" />
+        <LoaderCircle size={28} class="spinner" />
         <span class="loading-text">Loading dashboard...</span>
       </div>
+    {:else if loadError}
+      <div class="loading-overlay">
+        <RefreshCw size={24} />
+        <span class="loading-text">Could not reach Grafana at localhost:3000</span>
+        <button class="retry-btn" onclick={reload}>Retry</button>
+      </div>
     {/if}
-    {#if iframeSrc}
+    {#if !reloading && iframeSrc}
       <iframe
         src={iframeSrc}
         title="Grafana Dashboard"
-        onload={() => { loading = false; }}
+        class:blend={$themeStore !== 'dark'}
+        onload={() => { loading = false; loadError = false; }}
       ></iframe>
     {/if}
   </div>
@@ -98,8 +131,8 @@
   }
   .tab:hover { color: var(--text-secondary); }
   .tab.active {
-    color: var(--accent-red);
-    border-bottom-color: var(--accent-red);
+    color: var(--accent);
+    border-bottom-color: var(--accent);
   }
   .tab-actions {
     margin-left: auto;
@@ -122,18 +155,21 @@
     text-decoration: none;
   }
   .tab-btn:hover {
-    background: rgba(7, 54, 66, 0.06);
+    background: var(--hover-overlay);
     color: var(--text-primary);
   }
   .frame-container {
     flex: 1;
     position: relative;
+    background: var(--bg-primary);
   }
   .frame-container iframe {
     width: 100%;
     height: 100%;
     border: none;
-    background: var(--bg-primary);
+  }
+  .frame-container iframe.blend {
+    mix-blend-mode: multiply;
   }
   .loading-overlay {
     position: absolute;
@@ -142,18 +178,32 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    background: var(--bg-secondary);
+    background: var(--bg-primary);
     z-index: 5;
     gap: 10px;
+    color: var(--text-dim);
   }
   .loading-text {
     font-size: 10px;
     color: var(--text-dim);
     letter-spacing: 1px;
   }
+  .retry-btn {
+    margin-top: 4px;
+    padding: 4px 14px;
+    font-size: 10px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.2s;
+  }
+  .retry-btn:hover { border-color: var(--accent); color: var(--text-primary); }
   :global(.spinner) {
     animation: spin 1s linear infinite;
-    color: var(--accent-red);
+    color: var(--accent);
   }
   @keyframes spin { to { transform: rotate(360deg); } }
 </style>

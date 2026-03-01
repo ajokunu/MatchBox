@@ -36,20 +36,29 @@ export const GET: RequestHandler = async () => {
   try {
     const data = (await graphql(`{
       about { version }
+      indicators(first: 0) { pageInfo { globalCount } }
       stixCyberObservables(first: 0) { pageInfo { globalCount } }
       reports(first: 0) { pageInfo { globalCount } }
+      malwares(first: 0) { pageInfo { globalCount } }
+      threatActorsIndividual: threatActorsIndividuals(first: 0) { pageInfo { globalCount } }
       connectors { id name active }
     }`)) as {
       about: { version: string };
+      indicators: { pageInfo: { globalCount: number } };
       stixCyberObservables: { pageInfo: { globalCount: number } };
       reports: { pageInfo: { globalCount: number } };
+      malwares: { pageInfo: { globalCount: number } };
+      threatActorsIndividual: { pageInfo: { globalCount: number } };
       connectors: Array<{ id: string; name: string; active: boolean }>;
     };
 
     return json({
       version: data.about.version,
-      indicators: data.stixCyberObservables.pageInfo.globalCount,
+      indicators: data.indicators.pageInfo.globalCount,
+      observables: data.stixCyberObservables.pageInfo.globalCount,
       reports: data.reports.pageInfo.globalCount,
+      malwares: data.malwares.pageInfo.globalCount,
+      threatActors: data.threatActorsIndividual.pageInfo.globalCount,
       connectors: data.connectors.length,
       activeConnectors: data.connectors.filter((c) => c.active).length,
       status: 'online'

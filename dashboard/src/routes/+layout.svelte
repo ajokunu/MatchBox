@@ -8,6 +8,9 @@
   let { children } = $props();
 
   onMount(() => {
+    // Clear the inline body background set by app.html anti-FOUC script
+    // so the CSS var(--bg-primary) takes over for theme switching
+    document.body.style.background = '';
     const stop = startPolling();
     return stop;
   });
@@ -31,15 +34,21 @@
     flex-direction: column;
     height: 100vh;
     overflow: hidden;
+    background: var(--bg-primary);
+    transition: background 0.2s;
   }
   .app-body {
     display: flex;
     flex: 1;
     overflow: hidden;
+    background: var(--bg-primary);
+    transition: background 0.2s;
   }
   .content {
     flex: 1;
     overflow-y: auto;
     overflow-x: hidden;
+    background: var(--bg-primary);
+    transition: background 0.2s;
   }
 </style>

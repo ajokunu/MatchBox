@@ -4,22 +4,28 @@ import type { HealthState, MetricsState } from './stores';
 export async function fetchHealth(): Promise<void> {
   try {
     const resp = await fetch('/api/health');
-    if (!resp.ok) return;
+    if (!resp.ok) {
+      console.warn('[MatchBox] health fetch failed:', resp.status);
+      return;
+    }
     const data: Record<string, HealthState> = await resp.json();
     healthStore.set(data);
-  } catch {
-    // silent — health check failed
+  } catch (err) {
+    console.warn('[MatchBox] health fetch error:', err);
   }
 }
 
 export async function fetchMetrics(serviceId: string): Promise<void> {
   try {
     const resp = await fetch(`/api/${serviceId}`);
-    if (!resp.ok) return;
+    if (!resp.ok) {
+      console.warn(`[MatchBox] ${serviceId} metrics fetch failed:`, resp.status);
+      return;
+    }
     const data: MetricsState = await resp.json();
     metricsStore.update((m) => ({ ...m, [serviceId]: data }));
-  } catch {
-    // silent — metrics fetch failed
+  } catch (err) {
+    console.warn(`[MatchBox] ${serviceId} metrics error:`, err);
   }
 }
 

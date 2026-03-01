@@ -1,17 +1,15 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { Shield, BarChart3, Radar, ShieldAlert, Brain } from 'lucide-svelte';
+  import { Sun, Moon } from 'lucide-svelte';
   import StatusDot from './StatusDot.svelte';
-  import { healthStore } from '$lib/stores';
+  import { healthStore, themeStore, toggleTheme } from '$lib/stores';
   import { services } from '$lib/config';
 
-  const iconMap: Record<string, typeof Shield> = {
-    Shield, BarChart3, Radar, ShieldAlert, Brain
-  };
-
   let clock = $state('--:--:-- UTC');
+  let isDark = $derived($themeStore === 'dark');
 
   onMount(() => {
+    document.documentElement.setAttribute('data-theme', $themeStore);
     const update = () => {
       clock = new Date().toISOString().slice(11, 19) + ' UTC';
     };
@@ -23,7 +21,19 @@
 
 <header class="header">
   <div class="logo-section">
-    <div class="logo">M</div>
+    <svg class="logo-svg" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <linearGradient id="flame" x1="0" y1="1" x2="0" y2="0">
+          <stop offset="0%" stop-color="var(--accent)"/>
+          <stop offset="60%" stop-color="#ef7b45"/>
+          <stop offset="100%" stop-color="#fbbf24"/>
+        </linearGradient>
+      </defs>
+      <rect x="2" y="10" width="28" height="20" rx="3" fill="var(--bg-card)" stroke="var(--border)" stroke-width="1"/>
+      <rect x="2" y="24" width="28" height="6" rx="0 0 3 3" fill="var(--accent)"/>
+      <rect x="14.5" y="4" width="3" height="18" rx="1.5" fill="var(--border)"/>
+      <ellipse cx="16" cy="5" rx="3.5" ry="4" fill="url(#flame)"/>
+    </svg>
     <div>
       <div class="title">MATCHBOX SOC</div>
       <div class="subtitle">Command Center</div>
@@ -44,7 +54,16 @@
     {/each}
   </div>
 
-  <div class="clock">{clock}</div>
+  <div class="header-right">
+    <button class="theme-toggle" onclick={toggleTheme} title={isDark ? 'Switch to light' : 'Switch to dark'}>
+      {#if isDark}
+        <Sun size={14} />
+      {:else}
+        <Moon size={14} />
+      {/if}
+    </button>
+    <div class="clock">{clock}</div>
+  </div>
 </header>
 
 <style>
@@ -59,6 +78,7 @@
     position: relative;
     z-index: 100;
     flex-shrink: 0;
+    transition: background 0.2s, border-color 0.2s;
   }
   .header::after {
     content: '';
@@ -67,7 +87,7 @@
     left: 0;
     right: 0;
     height: 1px;
-    background: linear-gradient(90deg, transparent, var(--accent-red), transparent);
+    background: linear-gradient(90deg, transparent, var(--accent), transparent);
     opacity: 0.4;
   }
   .logo-section {
@@ -75,24 +95,16 @@
     align-items: center;
     gap: 10px;
   }
-  .logo {
+  .logo-svg {
     width: 30px;
     height: 30px;
-    background: var(--accent-red);
-    border-radius: 7px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 16px;
-    font-weight: bold;
-    box-shadow: 0 2px 8px rgba(203, 45, 62, 0.25);
-    color: #fdf6e3;
+    flex-shrink: 0;
   }
   .title {
     font-size: 15px;
     font-weight: 700;
     letter-spacing: 1.5px;
-    color: var(--accent-red);
+    color: var(--accent);
   }
   .subtitle {
     font-size: 9px;
@@ -117,11 +129,33 @@
     text-decoration: none;
   }
   .status-item:hover {
-    background: rgba(7, 54, 66, 0.06);
+    background: var(--hover-overlay);
+  }
+  .header-right {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .theme-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--bg-card);
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .theme-toggle:hover {
+    border-color: var(--accent);
+    color: var(--accent);
   }
   .clock {
     font-size: 12px;
-    color: var(--accent-red);
+    color: var(--accent);
     font-weight: 600;
     letter-spacing: 1px;
   }
