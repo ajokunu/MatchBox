@@ -5,9 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link rel="icon" href="%sveltekit.assets%/favicon.svg" />
   <title>MatchBox SOC</title>
+  <script>
+    (function(){var t=localStorage.getItem('matchbox-theme')||'light';document.documentElement.setAttribute('data-theme',t);document.body&&(document.body.style.background=t==='dark'?'#002b36':'#fdf6e3')})();
+  </script>
   %sveltekit.head%
 </head>
-<body data-sveltekit-preload-data="hover" style="background:#0a0e17;">
+<body data-sveltekit-preload-data="hover">
   <div style="display:contents">%sveltekit.body%</div>
 </body>
 </html>

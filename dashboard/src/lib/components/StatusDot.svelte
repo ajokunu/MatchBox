@@ -22,7 +22,7 @@
     box-shadow: 0 0 4px rgba(42, 161, 152, 0.4);
   }
   .offline {
-    background: var(--accent-red);
+    background: var(--accent);
     box-shadow: 0 0 4px rgba(203, 45, 62, 0.4);
     animation: blink 1s ease-in-out infinite;
   }

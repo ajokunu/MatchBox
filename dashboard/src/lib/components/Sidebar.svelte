@@ -1,12 +1,12 @@
 <script lang="ts">
   import { page } from '$app/stores';
-  import { Shield, BarChart3, Radar, ShieldAlert, Brain, LayoutDashboard, ExternalLink } from 'lucide-svelte';
+  import { Shield, ChartColumn, Radar, ShieldAlert, Brain, LayoutDashboard, ExternalLink } from 'lucide-svelte';
   import StatusDot from './StatusDot.svelte';
   import { healthStore } from '$lib/stores';
   import { services } from '$lib/config';
 
   const iconMap: Record<string, typeof Shield> = {
-    Shield, BarChart3, Radar, ShieldAlert, Brain
+    Shield, ChartColumn, Radar, ShieldAlert, Brain
   };
 </script>
 
@@ -26,9 +26,8 @@
       href="/{svc.id}"
       class="nav-item"
       class:active={$page.url.pathname === `/${svc.id}`}
-      style="--svc-color: {svc.color}"
     >
-      <svelte:component this={Icon} size={16} />
+      <Icon size={16} />
       <span class="nav-name">{svc.name}</span>
       <StatusDot status={health?.status ?? 'checking'} />
     </a>
@@ -50,7 +49,7 @@
   {/each}
 
   <div class="nav-footer">
-    <span class="footer-version">v1.3.1</span>
+    <span class="footer-version">v1.5.0</span>
   </div>
 </nav>
 
@@ -64,6 +63,7 @@
     padding: 8px 0;
     flex-shrink: 0;
     overflow-y: auto;
+    transition: background 0.2s, border-color 0.2s;
   }
   .nav-item {
     display: flex;
@@ -77,13 +77,13 @@
     border-left: 2px solid transparent;
   }
   .nav-item:hover {
-    background: rgba(7, 54, 66, 0.05);
+    background: var(--hover-overlay);
     color: var(--text-primary);
   }
   .nav-item.active {
     color: var(--text-primary);
-    background: rgba(203, 45, 62, 0.06);
-    border-left-color: var(--svc-color, var(--accent-red));
+    background: var(--accent-muted);
+    border-left-color: var(--accent);
   }
   .nav-item.external {
     font-size: 10px;

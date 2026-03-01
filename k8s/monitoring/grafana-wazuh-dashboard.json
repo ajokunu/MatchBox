@@ -101,7 +101,8 @@
             ]
           },
           "mappings": [],
-          "unit": "short"
+          "unit": "short",
+          "noValue": "All quiet — no alerts detected"
         },
         "overrides": []
       },
@@ -186,7 +187,8 @@
             ]
           },
           "mappings": [],
-          "unit": "short"
+          "unit": "short",
+          "noValue": "No threats — smooth sailing"
         },
         "overrides": []
       },
@@ -267,7 +269,8 @@
             ]
           },
           "mappings": [],
-          "unit": "short"
+          "unit": "short",
+          "noValue": "No agents reporting yet"
         },
         "overrides": []
       },
@@ -294,7 +297,16 @@
           },
           "query": "*",
           "alias": "Active Agents",
-          "bucketAggs": [],
+          "bucketAggs": [
+            {
+              "id": "2",
+              "type": "date_histogram",
+              "field": "timestamp",
+              "settings": {
+                "interval": "auto"
+              }
+            }
+          ],
           "metrics": [
             {
               "id": "1",
@@ -368,7 +380,8 @@
             ]
           },
           "mappings": [],
-          "unit": "short"
+          "unit": "short",
+          "noValue": "No alert activity — all things are going smoothly"
         },
         "overrides": []
       },
@@ -473,7 +486,8 @@
             ]
           },
           "mappings": [],
-          "unit": "short"
+          "unit": "short",
+          "noValue": "No alert rules triggered — looking good"
         },
         "overrides": []
       },
@@ -507,7 +521,7 @@
             {
               "id": "2",
               "type": "terms",
-              "field": "rule.description.keyword",
+              "field": "rule.description",
               "settings": {
                 "size": "10",
                 "order": "desc",
@@ -563,7 +577,8 @@
             ]
           },
           "mappings": [],
-          "unit": "short"
+          "unit": "short",
+          "noValue": "No severity data — nothing to report"
         },
         "overrides": []
       },
@@ -669,7 +684,8 @@
             "filterable": true
           },
           "mappings": [],
-          "unit": "short"
+          "unit": "short",
+          "noValue": "No source IPs detected — perimeter is clear"
         },
         "overrides": [
           {
@@ -808,7 +824,8 @@
             "filterable": true
           },
           "mappings": [],
-          "unit": "short"
+          "unit": "short",
+          "noValue": "No critical alerts — all systems nominal"
         },
         "overrides": [
           {

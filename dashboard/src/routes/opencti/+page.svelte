@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { Radar, ExternalLink, RefreshCw, AlertTriangle, Activity } from 'lucide-svelte';
+  import { Radar, ExternalLink, RefreshCw, TriangleAlert, Activity } from 'lucide-svelte';
   import StatBox from '$lib/components/StatBox.svelte';
 
   let data = $state<Record<string, unknown> | null>(null);
@@ -55,7 +55,7 @@
       </div>
     {:else if error && !data}
       <div class="center-msg error">
-        <AlertTriangle size={24} />
+        <TriangleAlert size={24} />
         <span>Could not reach OpenCTI</span>
         <span class="error-detail">{error}</span>
       </div>
@@ -63,10 +63,12 @@
       <div class="stats-row">
         <StatBox label="Status" value={String(data.status ?? 'unknown')} color="var(--accent-green)" />
         <StatBox label="Version" value={String(data.version ?? '...')} />
-        <StatBox label="Indicators" value={data.indicators ?? '...'} color="var(--accent-purple)" />
-        <StatBox label="Reports" value={data.reports ?? '...'} color="var(--accent-blue)" />
-        <StatBox label="Connectors" value={data.connectors ?? '...'} />
-        <StatBox label="Active" value={data.activeConnectors ?? '...'} color="var(--accent-green)" />
+        <StatBox label="Indicators" value={data.indicators ?? 0} color="var(--accent)" />
+        <StatBox label="Observables" value={data.observables ?? 0} color="var(--accent)" />
+        <StatBox label="Reports" value={data.reports ?? 0} />
+        <StatBox label="Malwares" value={data.malwares ?? 0} />
+        <StatBox label="Connectors" value={`${data.activeConnectors ?? 0}/${data.connectors ?? 0}`} color="var(--accent-green)" />
+        <StatBox label="Threat Actors" value={data.threatActors ?? 0} />
       </div>
 
       {#if data.note}
@@ -81,6 +83,7 @@
           OpenCTI blocks iframe embedding (Content-Security-Policy: frame-ancestors 'none').
           Click "Open OpenCTI" to access the full platform with STIX/TAXII feeds,
           MITRE ATT&CK mapping, indicator enrichment, and threat intelligence reports.
+          Import STIX bundles or configure connectors to populate threat data.
         </p>
       </div>
     {/if}
@@ -107,9 +110,9 @@
     cursor: pointer; font-family: inherit; transition: all 0.2s;
     text-decoration: none;
   }
-  .action-btn:hover { border-color: var(--accent-purple); color: var(--text-primary); }
+  .action-btn:hover { border-color: var(--accent); color: var(--text-primary); }
   .action-btn.accent {
-    background: var(--accent-purple); border-color: var(--accent-purple); color: #fdf6e3;
+    background: var(--accent); border-color: var(--accent); color: #fdf6e3;
   }
   .action-btn.accent:hover { opacity: 0.9; }
   .page-content { flex: 1; padding: 16px; overflow-y: auto; }
@@ -118,10 +121,10 @@
     justify-content: center; height: 200px; gap: 8px;
     color: var(--text-dim); font-size: 12px;
   }
-  .center-msg.error { color: var(--accent-red); }
+  .center-msg.error { color: var(--accent); }
   .error-detail { font-size: 10px; color: var(--text-dim); }
   .stats-row {
-    display: grid; grid-template-columns: repeat(3, 1fr);
+    display: grid; grid-template-columns: repeat(4, 1fr);
     gap: 8px; margin-bottom: 16px;
   }
   .info-card {
@@ -130,5 +133,5 @@
   }
   .info-title { font-size: 12px; font-weight: 600; margin-bottom: 8px; color: var(--text-primary); }
   .info-text { font-size: 11px; color: var(--text-secondary); line-height: 1.6; }
-  :global(.spinner) { animation: spin 1s linear infinite; color: var(--accent-purple); }
+  :global(.spinner) { animation: spin 1s linear infinite; color: var(--accent); }
 </style>

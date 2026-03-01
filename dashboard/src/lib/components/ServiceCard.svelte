@@ -1,6 +1,6 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
-  import { Shield, BarChart3, Radar, ShieldAlert, Brain, ExternalLink } from 'lucide-svelte';
+  import { Shield, ChartColumn, Radar, ShieldAlert, Brain, ExternalLink } from 'lucide-svelte';
   import StatusDot from './StatusDot.svelte';
   import StatBox from './StatBox.svelte';
   import { healthStore, metricsStore } from '$lib/stores';
@@ -9,7 +9,7 @@
   let { service }: { service: ServiceConfig } = $props();
 
   const iconMap: Record<string, typeof Shield> = {
-    Shield, BarChart3, Radar, ShieldAlert, Brain
+    Shield, ChartColumn, Radar, ShieldAlert, Brain
   };
 
   function navigate() { goto(`/${service.id}`); }
@@ -22,49 +22,53 @@
   let metrics = $derived($metricsStore[service.id] ?? {});
   let Icon = $derived(iconMap[service.icon] || Shield);
 
-  function getStats(): Array<{ label: string; value: string | number; color: string }> {
+  function fmt(v: unknown): string | number {
+    if (v === undefined || v === null) return '...';
+    return v as string | number;
+  }
+
+  let stats = $derived.by(() => {
+    const m = metrics;
     switch (service.id) {
       case 'wazuh':
         return [
-          { label: 'Alerts', value: metrics.totalAlerts ?? '...', color: 'var(--accent-red)' },
-          { label: 'Agents', value: metrics.activeAgents ?? '...', color: 'var(--accent-green)' }
+          { label: 'Alerts', value: fmt(m.totalAlerts), color: 'var(--accent)' },
+          { label: 'Agents', value: `${fmt(m.activeAgents)}/${fmt(m.totalAgents)}`, color: '' }
         ];
       case 'grafana':
         return [
-          { label: 'Dashboards', value: metrics.dashboards ?? '...', color: 'var(--accent-green)' },
-          { label: 'Version', value: metrics.version ? String(metrics.version).slice(0, 6) : '...', color: '' }
+          { label: 'Dashboards', value: fmt(m.dashboards), color: 'var(--accent)' },
+          { label: 'Version', value: m.version ? String(m.version).slice(0, 6) : '...', color: '' }
         ];
       case 'opencti':
         return [
-          { label: 'Indicators', value: metrics.indicators ?? '...', color: 'var(--accent-purple)' },
-          { label: 'Connectors', value: metrics.connectors ?? '...', color: '' }
+          { label: 'Indicators', value: fmt(m.indicators), color: 'var(--accent)' },
+          { label: 'Connectors', value: `${fmt(m.activeConnectors)}/${fmt(m.connectors)}`, color: '' }
         ];
       case 'thehive':
         return [
-          { label: 'Cases', value: metrics.openCases ?? '...', color: 'var(--accent-orange)' },
-          { label: 'Version', value: metrics.version ? String(metrics.version).slice(0, 8) : '...', color: '' }
+          { label: 'Cases', value: fmt(m.openCases), color: 'var(--accent)' },
+          { label: 'Alerts', value: fmt(m.alerts), color: '' }
         ];
       case 'cortex':
         return [
-          { label: 'Analyzers', value: metrics.analyzers ?? '...', color: 'var(--accent-cyan)' },
-          { label: 'Version', value: metrics.version ? String(metrics.version).slice(0, 8) : '...', color: '' }
+          { label: 'Analyzers', value: fmt(m.analyzers), color: 'var(--accent)' },
+          { label: 'Status', value: m.configured ? 'Active' : 'Setup', color: '' }
         ];
       default:
         return [];
     }
-  }
+  });
 </script>
 
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="card" style="--card-color: {service.color}" onclick={navigate}>
+<div class="card" onclick={navigate}>
   <div class="card-top">
     <div class="card-title">
-      <svelte:component this={Icon} size={18} strokeWidth={1.8} />
+      <Icon size={18} strokeWidth={1.8} />
       <span class="card-name">{service.name}</span>
-      <span class="card-badge" style="background: color-mix(in srgb, {service.color} 20%, transparent); color: {service.color};">
-        {service.badge}
-      </span>
+      <span class="card-badge">{service.badge}</span>
     </div>
     <div class="card-right">
       <StatusDot status={health?.status ?? 'checking'} />
@@ -79,7 +83,7 @@
   </div>
 
   <div class="card-stats">
-    {#each getStats() as stat}
+    {#each stats as stat}
       <StatBox label={stat.label} value={stat.value} color={stat.color} />
     {/each}
   </div>
@@ -102,7 +106,7 @@
   }
   .card:hover {
     background: var(--bg-card-hover);
-    border-color: var(--card-color);
+    border-color: var(--accent);
   }
   .card::before {
     content: '';
@@ -116,7 +120,7 @@
     transition: background 0.2s;
   }
   .card:hover::before {
-    background: var(--card-color);
+    background: var(--accent);
   }
   .card-top {
     display: flex;
@@ -141,6 +145,8 @@
     border-radius: 3px;
     font-weight: 700;
     letter-spacing: 0.5px;
+    background: var(--badge-bg);
+    color: var(--badge-text);
   }
   .card-right {
     display: flex;
@@ -165,7 +171,7 @@
     opacity: 1;
   }
   .open-btn:hover {
-    background: rgba(7, 54, 66, 0.08);
+    background: var(--hover-overlay);
     color: var(--text-primary);
   }
   .card-stats {

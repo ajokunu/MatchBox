@@ -1,22 +1,46 @@
-/* Solarized Light — MatchBox SOC Command Center
-   Cream backgrounds + matchbox-red accents */
-:root {
+/* MatchBox SOC — Dual Theme (Light default)
+   Light = Solarized cream + matchbox red
+   Dark  = Solarized dark + matchbox red */
+
+/* ── Light theme (default) ── */
+:root,
+[data-theme="light"] {
   --bg-primary: #fdf6e3;
   --bg-secondary: #f5eedc;
   --bg-card: #eee8d5;
   --bg-card-hover: #e6dfc8;
   --border: #d3c9a8;
-  --border-light: #e0d8c0;
-  --accent-red: #cb2d3e;
-  --accent-blue: #268bd2;
+  --accent: #cb2d3e;
+  --accent-muted: rgba(203, 45, 62, 0.12);
   --accent-green: #2aa198;
-  --accent-orange: #cb4b16;
-  --accent-purple: #6c71c4;
-  --accent-cyan: #2aa198;
   --accent-yellow: #b58900;
   --text-primary: #073642;
   --text-secondary: #586e75;
   --text-dim: #93a1a1;
+  --hover-overlay: rgba(7, 54, 66, 0.05);
+  --logo-shadow: rgba(203, 45, 62, 0.2);
+  --badge-bg: rgba(203, 45, 62, 0.08);
+  --badge-text: #cb2d3e;
+}
+
+/* ── Dark theme ── */
+[data-theme="dark"] {
+  --bg-primary: #002b36;
+  --bg-secondary: #073642;
+  --bg-card: #0a3d4a;
+  --bg-card-hover: #0d4957;
+  --border: #1a5566;
+  --accent: #e05263;
+  --accent-muted: rgba(224, 82, 99, 0.15);
+  --accent-green: #2aa198;
+  --accent-yellow: #b58900;
+  --text-primary: #fdf6e3;
+  --text-secondary: #93a1a1;
+  --text-dim: #586e75;
+  --hover-overlay: rgba(253, 246, 227, 0.04);
+  --logo-shadow: rgba(224, 82, 99, 0.3);
+  --badge-bg: rgba(224, 82, 99, 0.12);
+  --badge-text: #e05263;
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -28,11 +52,12 @@ body {
   overflow: hidden;
   height: 100vh;
   -webkit-font-smoothing: antialiased;
+  transition: background 0.2s, color 0.2s;
 }
 
 a { color: inherit; text-decoration: none; }
 
-/* Scrollbar — warm tones */
+/* Scrollbar */
 ::-webkit-scrollbar { width: 6px; }
 ::-webkit-scrollbar-track { background: var(--bg-secondary); }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
@@ -45,7 +70,7 @@ a { color: inherit; text-decoration: none; }
   left: 0;
   right: 0;
   height: 2px;
-  background: linear-gradient(90deg, transparent, var(--accent-red), transparent);
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
   opacity: 0.15;
   animation: scanline 8s linear infinite;
   pointer-events: none;
@@ -56,7 +81,9 @@ a { color: inherit; text-decoration: none; }
   100% { top: 100vh; }
 }
 
-/* Status dot animations */
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
 @keyframes pulse-glow {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.5; }

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { Brain, ExternalLink, RefreshCw, AlertTriangle, Activity } from 'lucide-svelte';
+  import { Brain, ExternalLink, RefreshCw, TriangleAlert, Activity } from 'lucide-svelte';
   import StatBox from '$lib/components/StatBox.svelte';
 
   let data = $state<Record<string, unknown> | null>(null);
@@ -55,7 +55,7 @@
       </div>
     {:else if error && !data}
       <div class="center-msg error">
-        <AlertTriangle size={24} />
+        <TriangleAlert size={24} />
         <span>Could not reach Cortex</span>
         <span class="error-detail">{error}</span>
       </div>
@@ -63,12 +63,18 @@
       <div class="stats-row">
         <StatBox label="Status" value={String(data.status ?? 'unknown')} color="var(--accent-green)" />
         <StatBox label="Version" value={String(data.version ?? '...')} />
-        <StatBox label="Analyzers" value={data.analyzers ?? '...'} color="var(--accent-cyan)" />
+        <StatBox label="Analyzers" value={data.analyzers ?? 0} color="var(--accent)" />
+        <StatBox label="Config" value={data.configured ? 'Active' : 'Setup Required'} color={data.configured ? 'var(--accent-green)' : 'var(--accent-yellow)'} />
       </div>
 
-      {#if data.note}
-        <div class="info-card">
-          <p class="info-text">{data.note}. Set CORTEX_API_KEY in dashboard/.env for full metrics.</p>
+      {#if !data.configured}
+        <div class="info-card warn">
+          <div class="info-title">Initial Setup Required</div>
+          <p class="info-text">
+            Cortex needs an organization and admin user before analyzers can be configured.
+            Click "Open Cortex" above to complete the initial setup wizard, then update
+            CORTEX_API_KEY in dashboard/.env with the generated API key.
+          </p>
         </div>
       {/if}
 
@@ -104,9 +110,9 @@
     cursor: pointer; font-family: inherit; transition: all 0.2s;
     text-decoration: none;
   }
-  .action-btn:hover { border-color: var(--accent-cyan); color: var(--text-primary); }
+  .action-btn:hover { border-color: var(--accent); color: var(--text-primary); }
   .action-btn.accent {
-    background: var(--accent-cyan); border-color: var(--accent-cyan); color: #fdf6e3;
+    background: var(--accent); border-color: var(--accent); color: #fdf6e3;
   }
   .action-btn.accent:hover { opacity: 0.9; }
   .page-content { flex: 1; padding: 16px; overflow-y: auto; }
@@ -115,17 +121,20 @@
     justify-content: center; height: 200px; gap: 8px;
     color: var(--text-dim); font-size: 12px;
   }
-  .center-msg.error { color: var(--accent-red); }
+  .center-msg.error { color: var(--accent); }
   .error-detail { font-size: 10px; color: var(--text-dim); }
   .stats-row {
-    display: grid; grid-template-columns: repeat(3, 1fr);
+    display: grid; grid-template-columns: repeat(4, 1fr);
     gap: 8px; margin-bottom: 16px;
   }
   .info-card {
     background: var(--bg-card); border: 1px solid var(--border);
     border-radius: 8px; padding: 16px;
   }
+  .info-card.warn {
+    border-color: var(--accent-yellow);
+  }
   .info-title { font-size: 12px; font-weight: 600; margin-bottom: 8px; color: var(--text-primary); }
   .info-text { font-size: 11px; color: var(--text-secondary); line-height: 1.6; }
-  :global(.spinner) { animation: spin 1s linear infinite; color: var(--accent-cyan); }
+  :global(.spinner) { animation: spin 1s linear infinite; color: var(--accent); }
 </style>

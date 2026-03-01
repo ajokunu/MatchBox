@@ -16,7 +16,8 @@ export const GET: RequestHandler = async () => {
 
     // Try to get analyzers (may fail if no org/user configured yet)
     let analyzerCount = 0;
-    if (CORTEX_API_KEY) {
+    let configured = false;
+    if (CORTEX_API_KEY && CORTEX_API_KEY !== 'CHANGE_ME') {
       try {
         const analyzerResp = await fetch(`${CORTEX_URL}/api/analyzer`, {
           headers: { Authorization: `Bearer ${CORTEX_API_KEY}` },
@@ -24,7 +25,10 @@ export const GET: RequestHandler = async () => {
         });
         if (analyzerResp.ok) {
           const analyzers = (await analyzerResp.json()) as unknown[];
-          if (Array.isArray(analyzers)) analyzerCount = analyzers.length;
+          if (Array.isArray(analyzers)) {
+            analyzerCount = analyzers.length;
+            configured = true;
+          }
         }
       } catch { /* Cortex not yet configured — safe to ignore */ }
     }
@@ -32,6 +36,7 @@ export const GET: RequestHandler = async () => {
     return json({
       version: status.versions?.Cortex || 'unknown',
       analyzers: analyzerCount,
+      configured,
       status: 'online'
     });
   } catch (err) {
