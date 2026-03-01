@@ -82,13 +82,34 @@ Three custom MCP servers let Claude Code interact with the SOC:
 
 ## Dashboard
 
-The SOC is integrated into the MatchBox dashboard at `http://localhost:3099`:
-- **Overview** — Architecture diagram, component cards, resource budget, quick start
-- **Architecture** — Data flow pipelines, port reference, namespace map, design decisions
-- **Components** — Detailed config for Wazuh, OpenCTI, TheHive, shared infra, monitoring
-- **MCP Servers** — Tool tables, env vars, usage examples for all 21 MCP tools
+<img alt="MatchBox SOC Command Center" src="docs/dashboard-overview.png" />
 
-A standalone version is also available at `public/index.html`.
+The **MatchBox SOC Command Center** is a SvelteKit dashboard that unifies all 5 services into a single pane of glass with live monitoring.
+
+### Running the Dashboard
+
+```bash
+# 1. Copy environment config
+cp .env.example .env
+# Edit .env with your service credentials
+
+# 2. Port-forward Grafana (from your k3s cluster)
+kubectl port-forward -n monitoring svc/monitoring-grafana 3000:80 &
+
+# 3. Start the dashboard
+cd dashboard
+npm install
+npm run dev -- --port 5173
+
+# 4. Open http://localhost:5173
+```
+
+### What You Get
+- **Service Overview** — Health status and key metrics for Wazuh, Grafana, OpenCTI, TheHive, and Cortex
+- **Live Monitoring** — Embedded Grafana dashboards (Wazuh SOC, K8s Cluster, Node Exporter, CoreDNS) with theme sync
+- **Wazuh Detail** — Alert breakdown, agent status, CIS Benchmark SCA compliance with segmented progress bars
+- **Per-Service Pages** — Deep-dive views for each tool with real-time metrics
+- **Solarized Theme** — Light/Dark toggle that syncs across the dashboard and embedded Grafana
 
 ## Documentation
 - [Architecture Design](docs/architecture.md)
