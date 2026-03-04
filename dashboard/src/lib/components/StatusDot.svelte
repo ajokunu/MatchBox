@@ -1,10 +1,11 @@
 <script lang="ts">
-  let { status = 'checking' }: { status: 'online' | 'offline' | 'checking' } = $props();
+  let { status = 'checking' }: { status: 'online' | 'degraded' | 'offline' | 'checking' } = $props();
 </script>
 
 <span
   class="dot"
   class:online={status === 'online'}
+  class:degraded={status === 'degraded'}
   class:offline={status === 'offline'}
   class:checking={status === 'checking'}
 ></span>
@@ -20,6 +21,11 @@
   .online {
     background: var(--accent-green);
     box-shadow: 0 0 4px rgba(42, 161, 152, 0.4);
+  }
+  .degraded {
+    background: var(--accent-yellow);
+    box-shadow: 0 0 4px rgba(181, 137, 0, 0.4);
+    animation: blink 2s ease-in-out infinite;
   }
   .offline {
     background: var(--accent);
