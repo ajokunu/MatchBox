@@ -26,7 +26,8 @@ export const GET: RequestHandler = async () => {
   // If no token configured, return minimal status
   if (!OPENCTI_TOKEN) {
     try {
-      await fetch(`${OPENCTI_URL}/health`, { signal: AbortSignal.timeout(5000) });
+      const resp = await fetch(`${OPENCTI_URL}/health`, { signal: AbortSignal.timeout(5000) });
+      if (!resp.ok) throw new Error(`OpenCTI health ${resp.status}`);
       return json({ status: 'online', note: 'No API token configured' });
     } catch {
       return json({ status: 'offline' }, { status: 502 });

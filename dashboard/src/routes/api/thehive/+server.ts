@@ -5,18 +5,23 @@ import { env } from '$env/dynamic/private';
 const THEHIVE_URL = env.THEHIVE_URL || 'http://localhost:9000';
 const THEHIVE_API_KEY = env.THEHIVE_API_KEY || '';
 
-async function thehiveQuery(query: unknown[]): Promise<unknown> {
+async function thehiveCount(listOp: string): Promise<number> {
   const resp = await fetch(`${THEHIVE_URL}/api/v1/query`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${THEHIVE_API_KEY}`,
       'Content-Type': 'application/json'
     },
-    body: JSON.stringify({ query }),
+    body: JSON.stringify({
+      query: [
+        { _name: listOp },
+        { _name: 'count' }
+      ]
+    }),
     signal: AbortSignal.timeout(10_000)
   });
   if (!resp.ok) throw new Error(`TheHive ${resp.status}`);
-  return resp.json();
+  return resp.json() as Promise<number>;
 }
 
 export const GET: RequestHandler = async () => {
@@ -37,28 +42,17 @@ export const GET: RequestHandler = async () => {
   }
 
   try {
-    // Fetch cases, alerts, and status in parallel
-    const [cases, alerts, statusResp] = await Promise.all([
-      thehiveQuery([
-        { _name: 'listCase' },
-        { _name: 'page', from: 0, to: 0, extraData: ['total'] }
-      ]) as Promise<unknown[]>,
-      thehiveQuery([
-        { _name: 'listAlert' },
-        { _name: 'page', from: 0, to: 0, extraData: ['total'] }
-      ]) as Promise<unknown[]>,
+    // Fetch case count, alert count, and status in parallel
+    const [caseCount, alertCount, statusResp] = await Promise.all([
+      thehiveCount('listCase'),
+      thehiveCount('listAlert'),
       fetch(`${THEHIVE_URL}/api/status`, {
         signal: AbortSignal.timeout(5000)
       })
     ]);
 
+    if (!statusResp.ok) throw new Error(`TheHive status ${statusResp.status}`);
     const status = (await statusResp.json()) as { versions?: Record<string, string> };
-
-    // TheHive v1 query with page extraData returns empty array when count is 0
-    // The total is available in the _extra field if items exist
-    // For a fresh install, array will be empty = count 0
-    const caseCount = Array.isArray(cases) ? cases.length : 0;
-    const alertCount = Array.isArray(alerts) ? alerts.length : 0;
 
     return json({
       version: status.versions?.TheHive || 'unknown',

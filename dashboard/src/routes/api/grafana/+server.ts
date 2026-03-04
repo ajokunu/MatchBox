@@ -11,6 +11,7 @@ export const GET: RequestHandler = async () => {
       fetch(`${GRAFANA_URL}/api/search?type=dash-db`, { signal: AbortSignal.timeout(5000) })
     ]);
 
+    if (!healthResp.ok) throw new Error(`Grafana ${healthResp.status}`);
     const health = (await healthResp.json()) as { version: string; database: string };
     let dashboardCount = 0;
     try {

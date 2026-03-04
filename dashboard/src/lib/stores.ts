@@ -1,7 +1,7 @@
 import { writable } from 'svelte/store';
 import { browser } from '$app/environment';
 
-export type ServiceStatus = 'checking' | 'online' | 'offline';
+export type ServiceStatus = 'checking' | 'online' | 'degraded' | 'offline';
 
 export interface HealthState {
   status: ServiceStatus;

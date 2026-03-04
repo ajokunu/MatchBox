@@ -19,7 +19,7 @@ export const GET: RequestHandler = async () => {
       try {
         const resp = await fetch(url, { signal: AbortSignal.timeout(5000) });
         results[id] = {
-          status: resp.ok || resp.status === 302 ? 'online' : 'online',
+          status: resp.ok || resp.status === 302 ? 'online' : 'degraded',
           latency: Date.now() - start
         };
       } catch {
