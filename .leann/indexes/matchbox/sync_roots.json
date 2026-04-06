@@ -1,0 +1,16 @@
+{
+  "roots": [
+    "/mnt/c/Users/alindahl/Code/MatchBox"
+  ],
+  "include_extensions": [
+    ".yaml",
+    ".md",
+    ".json",
+    ".sh",
+    ".ts",
+    ".py"
+  ],
+  "ignore_patterns": [
+    "**/.*"
+  ]
+}

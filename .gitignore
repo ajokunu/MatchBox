@@ -34,3 +34,4 @@ kubeconfig.yaml
 
 # Secrets (use secrets.yaml.example as template)
 k8s/shared/secrets.yaml
+nul
