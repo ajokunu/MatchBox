@@ -68,6 +68,10 @@ config:
   opensearch.yml: |
     cluster.name: matchbox-soc
     plugins.index_state_management.enabled: true
+    # Report version 7.10.2 to ES7 clients. Wazuh's bundled Filebeat (7.10.2) reads
+    # OpenSearch's native "2.19.1" as ancient Elasticsearch 2.x and emits the removed
+    # `_type` bulk field -> 400 errors. This flag makes alert indexing work.
+    compatibility.override_main_response_version: true
     plugins.security.ssl.transport.pemcert_filepath: certs/esnode.pem
     plugins.security.ssl.transport.pemkey_filepath: certs/esnode-key.pem
     plugins.security.ssl.transport.pemtrustedcas_filepath: certs/root-ca.pem

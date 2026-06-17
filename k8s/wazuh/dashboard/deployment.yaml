@@ -96,10 +96,10 @@ spec:
             - name: INDEXER_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: soc-shared-secrets
-                  key: opensearch-password
-                  # Fail closed: missing credential blocks pod start instead of
-                  # booting with a blank password against security-enabled OpenSearch.
+                  # wazuh-ns mirror of the OpenSearch admin password (secretKeyRefs
+                  # cannot cross namespaces). Fail closed if absent.
+                  name: soc-wazuh-secrets
+                  key: indexer-password
             - name: WAZUH_API_URL
               # Use the stable ClusterIP API Service (survives manager pod IP churn).
               value: "https://wazuh-manager-api.wazuh.svc.cluster.local:55000"
@@ -108,9 +108,10 @@ spec:
             - name: DASHBOARD_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: soc-shared-secrets
-                  key: opensearch-password
-                  # Fail closed: missing credential blocks pod start.
+                  # wazuh-ns mirror of the OpenSearch admin password (cross-namespace
+                  # secretKeyRefs are not allowed). Fail closed if absent.
+                  name: soc-wazuh-secrets
+                  key: indexer-password
             - name: API_USERNAME
               value: "wazuh-wui"
             - name: API_PASSWORD

@@ -93,9 +93,12 @@ if [ ! -f "$SECRETS_PLAIN" ]; then
 fi
 
 echo "[3/3] Encrypting secrets.yaml -> secrets.enc.yaml..."
-# SOPS reads the recipient from .sops.yaml via the path_regex match. We give the
-# output path so the creation_rule applies. The plaintext never goes to stdout.
-SOPS_AGE_KEY_FILE="$AGE_KEY_FILE" sops --encrypt "$SECRETS_PLAIN" > "$SECRETS_ENC"
+# SOPS matches creation_rules against the input filename, but we encrypt the
+# plaintext secrets.yaml INTO secrets.enc.yaml — so --filename-override makes SOPS
+# apply the secrets.enc.yaml rule (path_regex + encrypted_regex + age) to the input.
+# The plaintext never goes to stdout.
+SOPS_AGE_KEY_FILE="$AGE_KEY_FILE" sops --encrypt \
+  --filename-override "$SECRETS_ENC" "$SECRETS_PLAIN" > "$SECRETS_ENC"
 echo "  Wrote $SECRETS_ENC (commit this; secrets.yaml stays gitignored)."
 
 echo ""

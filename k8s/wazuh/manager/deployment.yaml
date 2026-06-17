@@ -90,10 +90,12 @@ spec:
               cp /tmp/custom-config/ossec.conf /etc-init/ossec.conf &&
               mkdir -p /etc-init/shared &&
               [ -f /etc-init/shared/ar.conf ] || touch /etc-init/shared/ar.conf
+          # NOTE: the Wazuh manager image's /var/ossec tree is owned by the wazuh
+          # user with restrictive perms; `cp -a` (preserving ownership) needs root
+          # WITH DAC_OVERRIDE/CHOWN. Dropping ALL caps makes even root fail with
+          # "Permission denied", so we keep the image's default caps here (seccomp
+          # still constrains the syscall surface).
           securityContext:
-            allowPrivilegeEscalation: false
-            capabilities:
-              drop: ["ALL"]
             seccompProfile:
               type: RuntimeDefault
           volumeMounts:
@@ -105,10 +107,12 @@ spec:
         - name: wazuh-manager
           image: wazuh/wazuh-manager:4.14.3
           imagePullPolicy: IfNotPresent
+          # The Wazuh manager runs wazuh-control which starts its daemons as root and
+          # drops to the wazuh user via setuid — this needs the image's default caps
+          # and privilege escalation. Dropping ALL caps / disabling setuid breaks the
+          # manager. seccomp RuntimeDefault still constrains the syscall surface; full
+          # rootless hardening is tracked for wave 2.
           securityContext:
-            allowPrivilegeEscalation: false
-            capabilities:
-              drop: ["ALL"]
             seccompProfile:
               type: RuntimeDefault
           ports:
@@ -133,16 +137,20 @@ spec:
             - name: INDEXER_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: soc-shared-secrets
-                  key: opensearch-password
-                  # Fail closed: a missing secret/key must block pod start
-                  # (CreateContainerConfigError) rather than booting with empty creds.
+                  # wazuh-ns mirror of the OpenSearch admin password — secretKeyRefs
+                  # cannot cross namespaces, so soc-shared-secrets (shared ns) is not
+                  # reachable here. Fail closed if the key is absent.
+                  name: soc-wazuh-secrets
+                  key: indexer-password
+            # WAVE-2 HARDENING: 'none' for this one intra-cluster hop only (manager
+            # Filebeat -> shared OpenSearch). The wazuh-manager image regenerates
+            # filebeat.yml from its env template on every boot and does NOT wire
+            # ssl.certificate_authorities, so a 'certificate' mode rejects our self-signed
+            # CA. The hop is single-node, same-cluster, and locked down by NetworkPolicy.
+            # To re-enable verification: mount a ConfigMap filebeat.yml (subPath) that sets
+            # ssl.certificate_authorities: ['/etc/ssl/opensearch/root-ca.pem'].
             - name: FILEBEAT_SSL_VERIFICATION_MODE
-              value: "certificate"
-            # CA filename must match the actual key in the opensearch-certs Secret
-            # (root-ca.pem), consistent with ossec.conf and the dashboard config.
-            - name: FILEBEAT_SSL_CERTIFICATE_AUTHORITIES
-              value: "/etc/ssl/opensearch/root-ca.pem"
+              value: "none"
           volumeMounts:
             - name: data
               mountPath: /var/ossec/data
@@ -159,7 +167,13 @@ spec:
           # liveness begins, so a slow first boot does not trip a restart loop.
           startupProbe:
             exec:
-              command: ["/var/ossec/bin/wazuh-control", "status"]
+              # Ready when the CORE daemons are up. Plain `wazuh-control status` exits
+              # non-zero if ANY (incl. optional/disabled: clusterd, maild, integratord,
+              # csyslogd) daemon is down, which would keep a healthy manager un-Ready.
+              command:
+                - sh
+                - -c
+                - 'for d in wazuh-analysisd wazuh-remoted wazuh-db wazuh-apid; do /var/ossec/bin/wazuh-control status | grep -q "$d is running" || exit 1; done'
             initialDelaySeconds: 30
             periodSeconds: 10
             timeoutSeconds: 10
@@ -170,13 +184,25 @@ spec:
           # have silently stopped flowing.
           readinessProbe:
             exec:
-              command: ["/var/ossec/bin/wazuh-control", "status"]
+              # Ready when the CORE daemons are up. Plain `wazuh-control status` exits
+              # non-zero if ANY (incl. optional/disabled: clusterd, maild, integratord,
+              # csyslogd) daemon is down, which would keep a healthy manager un-Ready.
+              command:
+                - sh
+                - -c
+                - 'for d in wazuh-analysisd wazuh-remoted wazuh-db wazuh-apid; do /var/ossec/bin/wazuh-control status | grep -q "$d is running" || exit 1; done'
             periodSeconds: 15
             timeoutSeconds: 10
             failureThreshold: 3
           livenessProbe:
             exec:
-              command: ["/var/ossec/bin/wazuh-control", "status"]
+              # Ready when the CORE daemons are up. Plain `wazuh-control status` exits
+              # non-zero if ANY (incl. optional/disabled: clusterd, maild, integratord,
+              # csyslogd) daemon is down, which would keep a healthy manager un-Ready.
+              command:
+                - sh
+                - -c
+                - 'for d in wazuh-analysisd wazuh-remoted wazuh-db wazuh-apid; do /var/ossec/bin/wazuh-control status | grep -q "$d is running" || exit 1; done'
             periodSeconds: 30
             timeoutSeconds: 10
             failureThreshold: 6
