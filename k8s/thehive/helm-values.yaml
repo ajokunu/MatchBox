@@ -1,12 +1,19 @@
 # TheHive Helm Values — Incident Response Platform
 # Chart: strangebee/thehive (https://strangebee.github.io/helm-charts/)
+# Chart version: --version 1.0.0   (pin the chart; bump deliberately)
 #
 # Install:
 #   helm repo add strangebee https://strangebee.github.io/helm-charts/
-#   helm install thehive strangebee/thehive -n thehive -f helm-values.yaml
+#   helm install thehive strangebee/thehive -n thehive --version 1.0.0 -f helm-values.yaml
 
 # TheHive application config
 thehive:
+  # Pin the image (CLAUDE.md: "all images pinned, no :latest").
+  image:
+    registry: docker.io
+    repository: strangebee/thehive
+    tag: "5.4"
+
   # Resource limits — slim config
   resources:
     requests:
@@ -16,13 +23,49 @@ thehive:
       memory: "1Gi"
       cpu: "500m"
 
-  # Database backend — use shared OpenSearch
+  # Pod/container hardening — non-root, drop caps, seccomp RuntimeDefault.
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    fsGroup: 1000
+    seccompProfile:
+      type: RuntimeDefault
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop: ["ALL"]
+
+  # Mount the OpenSearch CA so TheHive can verify the TLS-only OpenSearch cert.
+  # ConfigMap opensearch-ca-cert lives in the thehive ns (k8s/thehive/opensearch-ca-cert.yaml).
+  extraVolumes:
+    - name: opensearch-ca
+      configMap:
+        name: opensearch-ca-cert
+  extraVolumeMounts:
+    - name: opensearch-ca
+      mountPath: /etc/ssl/opensearch
+      readOnly: true
+
+  # Database backend — use shared OpenSearch.
+  # OpenSearch enforces TLS (plugins.security.ssl.http.enabled: true), so this
+  # MUST be https:// with certificate verification ON (never ssl.verify=false).
   database:
     provider: elasticsearch
     elasticsearch:
-      url: "http://opensearch-cluster-master.shared.svc.cluster.local:9200"
+      url: "https://opensearch-cluster-master.shared.svc.cluster.local:9200"
       # TheHive uses its own index prefix to avoid collision with Wazuh/OpenCTI
       indexPrefix: "thehive"
+      # Credentials for OpenSearch (admin user, password from shared secret).
+      username: "admin"
+      passwordFrom:
+        secretKeyRef:
+          name: soc-shared-secrets
+          key: opensearch-password
+      # TLS: verify the server cert against the mounted SOC CA.
+      ssl:
+        enabled: true
+        verify: true
+        certificateAuthorities: "/etc/ssl/opensearch/ca.crt"
 
   # File storage — use shared MinIO (secret key from K8s Secret)
   storage:
@@ -41,9 +84,16 @@ thehive:
     servers:
       - name: "cortex-local"
         url: "http://cortex.thehive.svc.cluster.local:9001"
-        # API key set via Kubernetes Secret
+        # Bearer auth with the Cortex API key sourced from the K8s Secret.
+        # NOTE bootstrap order: the cortex-api-key value in soc-thehive-secrets is a
+        # placeholder until Cortex is running and an org user + API key is generated;
+        # patch the real key into the secret post-install, then restart TheHive.
         auth:
           type: "bearer"
+          keyFrom:
+            secretKeyRef:
+              name: soc-thehive-secrets
+              key: cortex-api-key
 
   # Application config overrides — Play secret from K8s Secret
   application:

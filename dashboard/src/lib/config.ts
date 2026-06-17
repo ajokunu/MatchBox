@@ -1,3 +1,6 @@
+import { env } from '$env/dynamic/public';
+import { Shield, ChartColumn, Radar, ShieldAlert, Brain } from 'lucide-svelte';
+
 export interface ServiceConfig {
   id: string;
   name: string;
@@ -10,6 +13,36 @@ export interface ServiceConfig {
   port: number;
 }
 
+/**
+ * Single source of truth for the icon lookup, shared by ServiceCard + Sidebar + the
+ * service detail layout so the map is declared once (was duplicated identically across
+ * components). Typed as `typeof Shield` to match lucide-svelte's component type.
+ */
+export const iconMap: Record<string, typeof Shield> = {
+  Shield,
+  ChartColumn,
+  Radar,
+  ShieldAlert,
+  Brain
+};
+
+/** Shared placeholders so the "not loaded yet" representation is consistent everywhere. */
+export const LOADING_PLACEHOLDER = '...';
+export const CHECKING_STATUS = 'checking';
+
+/**
+ * Public, client-exposed base URLs. These are read in the BROWSER (iframe srcs +
+ * "open in new tab" links) so they must be reachable from wherever the operator
+ * browses — set PUBLIC_*_URL when serving off-localhost. Defaults keep local dev working.
+ */
+export const publicUrls = {
+  wazuhDashboard: env.PUBLIC_WAZUH_DASHBOARD_URL || 'https://localhost:5601',
+  grafana: env.PUBLIC_GRAFANA_URL || 'http://localhost:3000',
+  opencti: env.PUBLIC_OPENCTI_URL || 'http://localhost:4000',
+  thehive: env.PUBLIC_THEHIVE_URL || 'http://localhost:9000',
+  cortex: env.PUBLIC_CORTEX_URL || 'http://localhost:9001'
+};
+
 export const services: ServiceConfig[] = [
   {
     id: 'wazuh',
@@ -18,7 +51,8 @@ export const services: ServiceConfig[] = [
     badge: 'SIEM',
     color: 'var(--accent)',
     icon: 'Shield',
-    dashboardUrl: 'https://localhost:5601',
+    // Derived from PUBLIC_* env so a host/port change happens in one place (was hardcoded).
+    dashboardUrl: publicUrls.wazuhDashboard,
     embeddable: false,
     port: 5601
   },
@@ -29,7 +63,7 @@ export const services: ServiceConfig[] = [
     badge: 'MONITOR',
     color: 'var(--accent)',
     icon: 'ChartColumn',
-    dashboardUrl: 'http://localhost:3000',
+    dashboardUrl: publicUrls.grafana,
     embeddable: true,
     port: 3000
   },
@@ -40,7 +74,7 @@ export const services: ServiceConfig[] = [
     badge: 'THREAT INTEL',
     color: 'var(--accent)',
     icon: 'Radar',
-    dashboardUrl: 'http://localhost:4000',
+    dashboardUrl: publicUrls.opencti,
     embeddable: false,
     port: 4000
   },
@@ -51,7 +85,7 @@ export const services: ServiceConfig[] = [
     badge: 'IR',
     color: 'var(--accent)',
     icon: 'ShieldAlert',
-    dashboardUrl: 'http://localhost:9000',
+    dashboardUrl: publicUrls.thehive,
     embeddable: true,
     port: 9000
   },
@@ -62,7 +96,7 @@ export const services: ServiceConfig[] = [
     badge: 'SOAR',
     color: 'var(--accent)',
     icon: 'Brain',
-    dashboardUrl: 'http://localhost:9001',
+    dashboardUrl: publicUrls.cortex,
     embeddable: false,
     port: 9001
   }

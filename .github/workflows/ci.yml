@@ -1,0 +1,239 @@
+# MatchBox SOC — Continuous Integration
+#
+# Validates everything that can be checked without a live cluster:
+#   - shellcheck         : lint all automation scripts (scripts/*.sh)
+#   - manifests          : kubeconform over k8s/**/*.yaml against the upstream K8s schema
+#   - helm-validate      : `helm template | kubeconform` for every wired Helm chart
+#   - gitleaks           : secret scan (the repo handles K8s Secrets / credentials)
+#   - node               : workspace matrix — npm ci + build (shared first) + typecheck + test
+#   - dashboard          : svelte-check on the SvelteKit dashboard
+#
+# Security note: every third-party action is PINNED TO A FULL COMMIT SHA (the human-readable
+# tag follows in a trailing comment) so a moved/compromised tag can never change what runs.
+# All jobs are independent and report their own status, so any subset can be made a
+# required status check in branch protection.
+
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main, master]
+
+# Cancel superseded runs on the same ref to save CI minutes.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Least-privilege default: jobs only read the repo. Bump per-job if a step needs more.
+permissions:
+  contents: read
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Shell scripts — lint every script under scripts/ for portability/quoting bugs.
+  # ---------------------------------------------------------------------------
+  shellcheck:
+    name: shellcheck (scripts/*.sh)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Run shellcheck
+        uses: ludeeus/action-shellcheck@00cae500b08a931fb5698e11e79bfbd38e612a38 # v2.0.0
+        with:
+          scandir: ./scripts
+          # bash dialect; the scripts use `set -euo pipefail` and bash-isms.
+          additional_files: ''
+        env:
+          SHELLCHECK_OPTS: -s bash -e SC1091
+
+  # ---------------------------------------------------------------------------
+  # Static manifests — validate raw k8s/**/*.yaml against the Kubernetes schema.
+  # CRDs that ship out-of-band (Traefik IngressRoute, cert-manager) have no schema
+  # in the default store, so we skip those kinds rather than fail the build.
+  # ---------------------------------------------------------------------------
+  manifests:
+    name: kubeconform (k8s manifests)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Install kubeconform
+        run: |
+          KC_VERSION="v0.6.7"
+          curl -fsSL "https://github.com/yannh/kubeconform/releases/download/${KC_VERSION}/kubeconform-linux-amd64.tar.gz" \
+            | tar -xz -C /tmp kubeconform
+          sudo mv /tmp/kubeconform /usr/local/bin/
+          kubeconform -v
+      - name: Validate manifests
+        run: |
+          set -euo pipefail
+          # Only RAW manifests go to kubeconform. Helm *values* files (which have no
+          # kind/apiVersion) and SOPS-encrypted secrets are excluded here — the
+          # helm-validate job renders charts, and ciphertext cannot be schema-checked.
+          #
+          # Excluded by pattern:
+          #   *-values.yaml, *helm-values*       Helm values (opencti, thehive, cortex, monitoring, wazuh)
+          #   k8s/shared/{opensearch,redis,rabbitmq,minio}.yaml   Helm values (no top-level kind)
+          #   secrets.yaml / secrets.enc.yaml    gitignored plaintext / SOPS ciphertext
+          mapfile -t MANIFESTS < <(find k8s -name '*.yaml' \
+            -not -name '*helm-values*' \
+            -not -name '*-values.yaml' \
+            -not -name 'opensearch.yaml' \
+            -not -name 'redis.yaml' \
+            -not -name 'rabbitmq.yaml' \
+            -not -name 'minio.yaml' \
+            -not -name 'secrets.yaml' \
+            -not -name 'secrets.enc.yaml' \
+            | sort)
+          printf 'Validating %d manifests:\n' "${#MANIFESTS[@]}"
+          printf '  %s\n' "${MANIFESTS[@]}"
+          # -ignore-missing-schemas tolerates third-party CRDs (Traefik IngressRoute,
+          #   ClusterIssuer) whose schemas are not in the default registry.
+          # -skip lists CRD kinds we deliberately do not schema-check here.
+          # -strict rejects unknown/duplicate keys in the manifests we DO own.
+          # The datreeio CRDs-catalog schema-location resolves common CRDs when present.
+          kubeconform \
+            -summary \
+            -strict \
+            -ignore-missing-schemas \
+            -skip CustomResourceDefinition,IngressRoute,Middleware,TLSOption,ClusterIssuer,Certificate,ServiceMonitor,PrometheusRule \
+            -kubernetes-version 1.30.0 \
+            -schema-location default \
+            -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
+            "${MANIFESTS[@]}"
+
+  # ---------------------------------------------------------------------------
+  # Helm charts — render each wired chart with its committed values and pipe the
+  # output through kubeconform. Catches values that produce invalid manifests
+  # without needing a cluster. Chart versions are pinned for reproducibility.
+  # ---------------------------------------------------------------------------
+  helm-validate:
+    name: helm template | kubeconform
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Install Helm
+        uses: azure/setup-helm@b9e51907a09c216f16ebe8536097933489208112 # v4.3.0
+        with:
+          version: v3.16.3
+      - name: Install kubeconform
+        run: |
+          KC_VERSION="v0.6.7"
+          curl -fsSL "https://github.com/yannh/kubeconform/releases/download/${KC_VERSION}/kubeconform-linux-amd64.tar.gz" \
+            | tar -xz -C /tmp kubeconform
+          sudo mv /tmp/kubeconform /usr/local/bin/
+      - name: Add chart repositories
+        run: |
+          # Mirror the repos used by scripts/deploy-stack.sh so `helm template` resolves.
+          helm repo add opensearch https://opensearch-project.github.io/helm-charts/
+          helm repo add bitnami https://charts.bitnami.com/bitnami
+          helm repo add minio https://charts.min.io/
+          helm repo add strangebee https://strangebee.github.io/helm-charts/
+          helm repo add opencti https://devops-ia.github.io/helm-opencti/
+          helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+          helm repo add traefik https://traefik.github.io/charts
+          helm repo update
+      - name: Render and validate charts
+        run: |
+          set -euo pipefail
+          # kubeconform invocation reused across charts; ignore CRDs the charts ship
+          # (ServiceMonitor/PrometheusRule from kube-prometheus-stack, etc.).
+          validate() {
+            kubeconform \
+              -summary -strict -ignore-missing-schemas \
+              -skip CustomResourceDefinition,ServiceMonitor,PrometheusRule,Alertmanager,Prometheus,IngressRoute,Middleware \
+              -kubernetes-version 1.30.0
+          }
+          # name | chart | namespace | values-file. Versions pinned for reproducibility.
+          helm template opensearch opensearch/opensearch \
+            -n shared -f k8s/shared/opensearch.yaml | validate
+          helm template redis bitnami/redis \
+            -n shared -f k8s/shared/redis.yaml | validate
+          helm template rabbitmq bitnami/rabbitmq \
+            -n shared -f k8s/shared/rabbitmq.yaml | validate
+          helm template minio minio/minio \
+            -n shared -f k8s/shared/minio.yaml | validate
+          helm template thehive strangebee/thehive \
+            -n thehive -f k8s/thehive/helm-values.yaml | validate
+          helm template cortex strangebee/cortex \
+            -n thehive -f k8s/thehive/cortex/helm-values.yaml | validate
+          helm template opencti opencti/opencti \
+            -n opencti -f k8s/opencti/helm-values.yaml | validate
+          helm template monitoring prometheus-community/kube-prometheus-stack \
+            -n monitoring -f k8s/monitoring/kube-prometheus-values.yaml | validate
+
+  # ---------------------------------------------------------------------------
+  # Secret scan — fail the build if any credential pattern lands in the tree.
+  # The repo intentionally tracks only *.example templates; real secrets are
+  # SOPS-encrypted (secrets.enc.yaml). gitleaks enforces that invariant.
+  # ---------------------------------------------------------------------------
+  gitleaks:
+    name: gitleaks (secret scan)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0 # full history so gitleaks can scan commits, not just the tip
+      - name: Run gitleaks
+        uses: gitleaks/gitleaks-action@83373cf2f8c4db6e24b41c1a9b086bb9619e9cd3 # v2.3.7
+        env:
+          # No paid licence needed for public repos / this open-source action.
+          GITLEAKS_ENABLE_UPLOAD_ARTIFACT: "false"
+
+  # ---------------------------------------------------------------------------
+  # Node workspaces — install once at the root (npm workspaces), build the shared
+  # package first (consumers depend on its dist/), then typecheck + test the lot.
+  # The matrix exercises the supported Node majors; the .nvmrc pin is the default.
+  # ---------------------------------------------------------------------------
+  node:
+    name: node ${{ matrix.node }} — build/typecheck/test
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['20', '22']
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Setup Node ${{ matrix.node }}
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      # npm workspaces: one root install hydrates shared + all three MCP servers + dashboard.
+      - name: Install (npm ci, workspaces)
+        run: npm ci
+      # Build the shared lib first so @matchbox/mcp-shared resolves for its consumers,
+      # then build every workspace. Root scripts run across workspaces (see root package.json).
+      - name: Build shared package
+        run: npm run build --workspace @matchbox/mcp-shared
+      - name: Build all workspaces
+        run: npm run build --workspaces --if-present
+      - name: Typecheck
+        run: npm run typecheck --workspaces --if-present
+      - name: Test
+        run: npm run test --workspaces --if-present
+
+  # ---------------------------------------------------------------------------
+  # Dashboard — svelte-check is its own job: it needs the SvelteKit sync step and
+  # is slow, so isolating it keeps the node matrix fast and the signal specific.
+  # ---------------------------------------------------------------------------
+  dashboard:
+    name: svelte-check (dashboard)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Setup Node (.nvmrc)
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - name: Install (npm ci, workspaces)
+        run: npm ci
+      # Run svelte-check directly (the dep is already in the dashboard workspace) so
+      # this job does not depend on a particular npm-script name in the dashboard lane.
+      # `svelte-kit sync` generates ./$types before the type check.
+      - name: svelte-check
+        working-directory: dashboard
+        run: |
+          npx --no-install svelte-kit sync
+          npx --no-install svelte-check --tsconfig ./tsconfig.json

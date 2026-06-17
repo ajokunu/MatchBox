@@ -84,11 +84,24 @@ a { color: inherit; text-decoration: none; }
 @keyframes spin {
   to { transform: rotate(360deg); }
 }
-@keyframes pulse-glow {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
-}
 @keyframes blink {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.3; }
+}
+
+/* Single shared spinner rule (was redeclared in GrafanaEmbed + every service page).
+   This is a plain global stylesheet, so .spinner already applies app-wide. */
+.spinner {
+  animation: spin 1s linear infinite;
+  color: var(--accent);
+}
+
+/* Honor reduced-motion: stop the perpetual scanline sweep and spinner rotation. */
+@media (prefers-reduced-motion: reduce) {
+  .scanline {
+    animation: none;
+  }
+  .spinner {
+    animation: none;
+  }
 }

@@ -1,0 +1,28 @@
+{
+  "name": "@matchbox/soc",
+  "version": "1.6.0",
+  "private": true,
+  "description": "MatchBox Home SOC — npm workspaces root for the MCP servers and dashboard",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "//workspaces": "Order matters for 'build': mcp-shared must compile before its consumers. npm runs --workspaces in package-graph order, and the shared package is declared first.",
+  "workspaces": [
+    "mcp-servers/shared",
+    "mcp-servers/wazuh-mcp",
+    "mcp-servers/thehive-mcp",
+    "mcp-servers/opencti-mcp",
+    "dashboard"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present"
+  },
+  "//overrides": "Force a single Vite 6 across the tree. vitest would otherwise hoist its own Vite 5 to the root, leaving two Vite copies whose Plugin types are nominally incompatible — which breaks svelte-check (dual @sveltejs/vite-plugin-svelte plugin identity).",
+  "overrides": {
+    "vite": "^6.4.1"
+  }
+}

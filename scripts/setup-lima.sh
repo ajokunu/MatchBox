@@ -59,15 +59,17 @@ echo "[3/5] Configuring kubeconfig..."
 KUBECONFIG_PATH="$(limactl list k3s-soc --format '{{.Dir}}')/copied-from-guest/kubeconfig.yaml"
 
 if [ -f "$KUBECONFIG_PATH" ]; then
-  # Fix server address for macOS access
-  sed -i '' 's/0\.0\.0\.0/127.0.0.1/g' "$KUBECONFIG_PATH" 2>/dev/null || true
+  # The copied kubeconfig already points at 127.0.0.1 (k3s default), which is
+  # host-reachable because Lima forwards guest 6443 -> 127.0.0.1:6443. No rewrite
+  # needed (the provision script no longer rewrites the server to 0.0.0.0).
   export KUBECONFIG="$KUBECONFIG_PATH"
   echo "  KUBECONFIG=$KUBECONFIG_PATH"
 else
   echo "  ERROR: kubeconfig not found at $KUBECONFIG_PATH"
   echo "  Trying manual copy..."
   limactl shell k3s-soc sudo cat /etc/rancher/k3s/k3s.yaml > /tmp/k3s-soc-kubeconfig.yaml
-  sed -i '' 's/127\.0\.0\.1/127.0.0.1/g' /tmp/k3s-soc-kubeconfig.yaml
+  # /etc/rancher/k3s/k3s.yaml already uses 127.0.0.1, reachable via the 6443
+  # port-forward — no sed rewrite is required here.
   KUBECONFIG_PATH="/tmp/k3s-soc-kubeconfig.yaml"
   export KUBECONFIG="$KUBECONFIG_PATH"
 fi

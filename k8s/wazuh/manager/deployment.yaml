@@ -22,6 +22,26 @@ spec:
       targetPort: 55000
   clusterIP: None
 ---
+# Stable ClusterIP Service for the 55000 Server API.
+# The headless Service above gives the StatefulSet its stable network identity,
+# but a headless lookup returns the pod IP directly, which churns during rollouts.
+# The dashboard talks to the API via this VIP so it survives pod IP changes.
+apiVersion: v1
+kind: Service
+metadata:
+  name: wazuh-manager-api
+  namespace: wazuh
+  labels:
+    app.kubernetes.io/name: wazuh-manager
+    app.kubernetes.io/component: api
+spec:
+  selector:
+    app.kubernetes.io/name: wazuh-manager
+  ports:
+    - name: api
+      port: 55000
+      targetPort: 55000
+---
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -41,21 +61,41 @@ spec:
         app.kubernetes.io/name: wazuh-manager
     spec:
       automountServiceAccountToken: false
-      # InitContainer copies default /var/ossec/etc/ from the image to an emptyDir,
-      # then overlays our custom ossec.conf. This ensures:
-      # 1. The init scripts can sed -i on ossec.conf (writable filesystem, not ConfigMap)
-      # 2. Default files like etc/shared/ar.conf are present
-      # 3. Custom rules/decoders still overlay via separate ConfigMap mounts
+      # Pod-level hardening baseline (Contract Section 7). The Wazuh manager image
+      # runs its daemons as root internally, so runAsNonRoot is not yet feasible here,
+      # but we still apply the default seccomp profile to shrink the syscall surface.
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      # InitContainer seeds the PVC-backed /var/ossec/etc ONLY when it is empty
+      # (first boot / fresh volume), then always overlays our custom ossec.conf.
+      # Persisting etc on a PVC (not emptyDir) keeps client.keys / agent identities
+      # across restarts so agents do not have to re-enroll (audit finding: emptyDir
+      # wiped client.keys on every restart). On subsequent boots the existing etc is
+      # preserved and we only refresh ossec.conf from the ConfigMap.
       initContainers:
         - name: init-config
           image: wazuh/wazuh-manager:4.14.3
+          imagePullPolicy: IfNotPresent  # version-tagged; avoid re-pull churn
           command: ["sh", "-c"]
           args:
             - |
-              cp -a /var/ossec/etc/. /etc-init/ &&
+              # Seed image defaults only when the persistent etc volume is empty,
+              # so client.keys and other runtime state survive restarts.
+              if [ ! -f /etc-init/.seeded ]; then
+                cp -a /var/ossec/etc/. /etc-init/ &&
+                touch /etc-init/.seeded
+              fi &&
+              # Always overlay our managed ossec.conf (ConfigMap is the source of truth)
               cp /tmp/custom-config/ossec.conf /etc-init/ossec.conf &&
               mkdir -p /etc-init/shared &&
               [ -f /etc-init/shared/ar.conf ] || touch /etc-init/shared/ar.conf
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
           volumeMounts:
             - name: config-staging
               mountPath: /tmp/custom-config
@@ -64,8 +104,13 @@ spec:
       containers:
         - name: wazuh-manager
           image: wazuh/wazuh-manager:4.14.3
+          imagePullPolicy: IfNotPresent
           securityContext:
             allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
           ports:
             - containerPort: 1514
               name: agent-events
@@ -90,11 +135,14 @@ spec:
                 secretKeyRef:
                   name: soc-shared-secrets
                   key: opensearch-password
-                  optional: true
+                  # Fail closed: a missing secret/key must block pod start
+                  # (CreateContainerConfigError) rather than booting with empty creds.
             - name: FILEBEAT_SSL_VERIFICATION_MODE
               value: "certificate"
+            # CA filename must match the actual key in the opensearch-certs Secret
+            # (root-ca.pem), consistent with ossec.conf and the dashboard config.
             - name: FILEBEAT_SSL_CERTIFICATE_AUTHORITIES
-              value: "/etc/ssl/opensearch/ca.crt"
+              value: "/etc/ssl/opensearch/root-ca.pem"
           volumeMounts:
             - name: data
               mountPath: /var/ossec/data
@@ -107,25 +155,38 @@ spec:
             - name: opensearch-certs
               mountPath: /etc/ssl/opensearch
               readOnly: true
+          # Startup probe gives the manager time to boot all daemons before
+          # liveness begins, so a slow first boot does not trip a restart loop.
+          startupProbe:
+            exec:
+              command: ["/var/ossec/bin/wazuh-control", "status"]
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 10
+            failureThreshold: 30
+          # Exec probes inspect actual daemon health (analysisd, remoted, wazuh-db,
+          # indexer connector) instead of merely confirming port 1514 is bound —
+          # a port-only check can pass while the manager is degraded and alerts
+          # have silently stopped flowing.
           readinessProbe:
-            tcpSocket:
-              port: 1514
-            initialDelaySeconds: 45
+            exec:
+              command: ["/var/ossec/bin/wazuh-control", "status"]
             periodSeconds: 15
-            timeoutSeconds: 5
+            timeoutSeconds: 10
+            failureThreshold: 3
           livenessProbe:
-            tcpSocket:
-              port: 1514
-            initialDelaySeconds: 120
+            exec:
+              command: ["/var/ossec/bin/wazuh-control", "status"]
             periodSeconds: 30
-            timeoutSeconds: 5
+            timeoutSeconds: 10
             failureThreshold: 6
       volumes:
         - name: config-staging
           configMap:
             name: wazuh-manager-config
-        - name: etc-writable
-          emptyDir: {}
+        # NOTE: 'etc-writable' is intentionally NOT declared here — it is provided
+        # by the 'etc-writable' volumeClaimTemplate below so /var/ossec/etc (and
+        # therefore client.keys / agent identities) persists across pod restarts.
         - name: custom-rules
           configMap:
             name: wazuh-custom-rules
@@ -144,3 +205,14 @@ spec:
         resources:
           requests:
             storage: 5Gi
+    # Persist /var/ossec/etc (client.keys, ossec.conf, internal options) so agent
+    # registration identities survive manager restarts/rescheduling instead of
+    # being wiped from an emptyDir and forcing every agent to re-enroll.
+    - metadata:
+        name: etc-writable
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: "local-path"
+        resources:
+          requests:
+            storage: 1Gi

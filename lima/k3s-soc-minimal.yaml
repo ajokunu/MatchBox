@@ -1,0 +1,65 @@
+# Lima VM — minimal footprint for Wazuh-only SOC
+# Reduced from k3s-soc.yaml: 10GiB→6GiB, 4 CPU→2, 120GiB→60GiB disk
+# Use with the deploy script's individual components: namespaces, shared, wazuh, ingress
+
+images:
+  - location: "https://cloud-images.ubuntu.com/releases/24.04/release/ubuntu-24.04-server-cloudimg-arm64.img"
+    arch: "aarch64"
+
+cpus: 2
+memory: "6GiB"
+disk: "60GiB"
+
+vmType: "vz"
+rosetta:
+  enabled: true
+  binfmt: true
+
+mounts:
+  - location: "~/DonnieBot/SecurityCenter"
+    mountPoint: "/home/{{.User}}/SecurityCenter"
+    writable: false
+
+# hostIP pinned to 127.0.0.1 — loopback-only, never the LAN.
+portForwards:
+  - guestPort: 6443
+    hostIP: "127.0.0.1"
+    hostPort: 6443
+    proto: tcp
+  - guestPort: 80
+    hostIP: "127.0.0.1"
+    hostPort: 80
+    proto: tcp
+  - guestPort: 443
+    hostIP: "127.0.0.1"
+    hostPort: 443
+    proto: tcp
+  - guestPort: 1514
+    hostIP: "127.0.0.1"
+    hostPort: 1514
+    proto: tcp
+  - guestPort: 1515
+    hostIP: "127.0.0.1"
+    hostPort: 1515
+    proto: tcp
+  - guestPort: 55000
+    hostIP: "127.0.0.1"
+    hostPort: 55000
+    proto: tcp
+
+# Per-VM provisioning parameters for the shared provision-k3s.sh script. Smaller
+# swap + tighter reservations/eviction since this VM has less headroom.
+env:
+  SWAP_SIZE: "2G"
+  K3S_SYSTEM_RESERVED: "cpu=100m,memory=200Mi"
+  K3S_EVICTION_HARD: "memory.available<150Mi"
+  K3S_EVICTION_SOFT: "memory.available<400Mi"
+
+# Same shared provisioning script as k3s-soc.yaml (single source of truth).
+provision:
+  - mode: system
+    file: provision-k3s.sh
+
+copyToHost:
+  - guest: "/etc/rancher/k3s/k3s.yaml"
+    host: "{{.Dir}}/copied-from-guest/kubeconfig.yaml"

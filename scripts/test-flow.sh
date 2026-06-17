@@ -10,8 +10,12 @@ VERBOSE=false
 
 export PATH="$HOME/.local/bin:$HOME/bin:$PATH"
 if [ -z "${KUBECONFIG:-}" ]; then
-  KUBECONFIG_PATH="$(limactl list k3s-soc --format '{{.Dir}}')/copied-from-guest/kubeconfig.yaml" 2>/dev/null || true
-  export KUBECONFIG="${KUBECONFIG_PATH:-}"
+  # Guard the command substitution itself (not the assignment) so a missing limactl
+  # neither leaks stderr nor yields a bogus path.
+  LIMA_DIR="$( (limactl list k3s-soc --format '{{.Dir}}' 2>/dev/null) || true )"
+  if [ -n "$LIMA_DIR" ]; then
+    export KUBECONFIG="$LIMA_DIR/copied-from-guest/kubeconfig.yaml"
+  fi
 fi
 
 PASS=0

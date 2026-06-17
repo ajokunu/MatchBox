@@ -6,7 +6,9 @@ metadata:
   name: wazuh-manager-config
   namespace: wazuh
   labels:
-    app: wazuh-manager
+    app.kubernetes.io/name: wazuh-manager
+    app.kubernetes.io/component: config
+    app.kubernetes.io/part-of: matchbox-soc
 data:
   ossec.conf: |
     <ossec_config>
@@ -19,11 +21,19 @@ data:
         <logall_json>no</logall_json>
       </global>
 
-      <!-- Agent enrollment -->
+      <!-- Agent enrollment (authd on 1515) -->
+      <!-- Hardening: bind each registration to its source IP so a stolen agent key
+           cannot be replayed from a different host. use_source_ip=yes is a no-secret
+           win and is combined with the tight 1515 NetworkPolicy (node ipBlock only).
+           NOTE: password-based enrollment is the stronger control but requires a
+           registration-password Secret key + authd.pass seeding wired across the
+           agent DaemonSet and the manager initContainer. That secret key is not yet
+           in the canonical secret set (Contract Section 1), so it is intentionally
+           deferred to avoid breaking enrollment with an unsatisfiable use_password. -->
       <auth>
         <disabled>no</disabled>
         <port>1515</port>
-        <use_source_ip>no</use_source_ip>
+        <use_source_ip>yes</use_source_ip>
         <purge>yes</purge>
       </auth>
 

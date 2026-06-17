@@ -2,19 +2,30 @@
 
 ## Supported Versions
 
+Only the current minor release line receives security fixes. Bump this table and
+`CHANGELOG.md` together on every release (see "Release process" below).
+
 | Version | Supported |
 |---------|-----------|
-| 1.3.x   | Yes       |
-| < 1.3   | No        |
+| 1.6.x   | Yes       |
+| < 1.6   | No        |
 
 ## Reporting a Vulnerability
 
 If you discover a security vulnerability in MatchBox, please report it responsibly:
 
-1. **Do not** open a public GitHub issue for security vulnerabilities
-2. Email security concerns to the maintainer directly
-3. Include steps to reproduce the vulnerability
-4. Allow reasonable time for a fix before public disclosure
+1. **Do not** open a public GitHub issue for security vulnerabilities.
+2. Use GitHub's **private vulnerability reporting** (repo → *Security* → *Report a
+   vulnerability*), which opens a private advisory thread with the maintainers.
+3. Include steps to reproduce, affected component(s), and any proof-of-concept.
+4. Allow reasonable time for a fix before public disclosure (target: 90 days).
+
+## Release process
+
+Each tagged release MUST, in the same change:
+
+1. Add a dated entry to `CHANGELOG.md`.
+2. Update the **Supported Versions** table above to the new minor line.
 
 ## Security Design
 

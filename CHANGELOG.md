@@ -3,6 +3,58 @@
 All notable changes to MatchBox are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioned with [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.0] — 2026-06-17
+
+A full-codebase hardening pass across 7 parallel lanes (mcp, dashboard, k8s-wazuh, k8s-rest-sec, scripts, docs, ci-dx) closing ~200 audit findings (see `docs/AUDIT-2026-findings.json`). Per `docs/IMPLEMENTATION-CONTRACT.md`, this moves the SOC from "demo-grade with TLS disabled and broken MCP endpoints" to "fail-closed, CA-verified, CI-gated, SOPS-managed". The Wazuh MCP now queries the real OpenSearch indexer, every TLS-verification kill switch is gone, secrets move to SOPS+age, and an npm-workspaces monorepo + GitHub Actions CI build and validate the whole tree.
+
+### Added
+- **npm workspaces monorepo**: new root `package.json` (`@matchbox/soc`, private, type:module, node>=20) ordering `mcp-servers/shared` first so `@matchbox/mcp-shared` builds before its consumers and the dashboard. Root `build`/`test`/`lint`/`typecheck` fan out via `--workspaces --if-present`. A root `overrides` pins a single Vite 6 across the tree (vitest 3) so `svelte-check` is not broken by duplicate Vite plugin identities.
+- **GitHub Actions CI** (`.github/workflows/ci.yml`): shellcheck over `scripts/`, kubeconform over raw `k8s/**`, `helm template | kubeconform` for the wired charts, gitleaks, a Node 20/22 matrix (`npm ci` + shared-first build + typecheck + test), and dashboard `svelte-check`. Actions pinned to commit SHAs; least-privilege `contents:read`.
+- **DX tooling**: `Makefile` (up/down/build/certs/secrets-init/deploy/teardown/test/lint/ci), `.nvmrc` (Node 20), shared `biome.json`, `.editorconfig`.
+- **SOC PKI script** `scripts/generate-certs.sh`: openssl-generates root-ca + esnode/kirk(admin)/wazuh-dashboard certs (PKCS#8 keys, canonical SANs/DNs `O=MatchBox C=US`), idempotent, and loads `opensearch-certs` (ns shared+wazuh), `wazuh-dashboard-certs` (ns wazuh), and the `opensearch-ca-cert` ConfigMap (ns wazuh+opencti+thehive+monitoring) — single source for the CA across every consuming namespace.
+- **SOPS+age secret management**: `scripts/setup-sops.sh` (age key kept OUTSIDE the repo, public recipient only), root `.sops.yaml` (`encrypted_regex '^(data|stringData)$'`), and a committable structural placeholder `k8s/shared/secrets.enc.yaml`; deploy decrypts at apply time.
+- **Shared MCP lib hardening** (`mcp-servers/shared`): deadline-aware idempotency-respecting `fetchWithRetry`, `formatResponse` that truncates records into a valid-JSON `{truncated,shown,total,data}` envelope before serialization, canonical `safeId`/`ID_PATTERN`, structured JSON logging, `[WRITE]` audit logging, generic tool-facing errors via `toolGuard`, `indexerSearch` (OpenSearch `_search`), and version from `package.json`.
+- **Wazuh MCP indexer path** (Contract §3): new `WAZUH_INDEXER_URL`/`WAZUH_INDEXER_USER`/`WAZUH_INDEXER_PASSWORD` env (fail-closed without the password).
+- **k8s reliability/observability**: stable `wazuh-manager-api` ClusterIP Service (:55000); `k8s/monitoring/soc-prometheus-rules.yaml` (PodOOMKilled, PodCrashLooping, NodeDiskPressure, WazuhManagerDown, OpenSearchClusterNotGreen, ConnectorCronJobFailed); Alertmanager webhook receiver.
+- **Pod Security Standards** labels per namespace (restricted for opencti/thehive/monitoring, baseline for shared, privileged for wazuh).
+- **Vitest contract tests** pinning Wazuh/OpenCTI/TheHive request shapes and shared-lib behavior; dashboard Vitest suites for auth enforcement, upstream error redaction, and StatusDot a11y.
+- **Docs**: `docs/VERSIONS.md` single source of truth (versions, ports, counts); cert-generation + SOPS steps in the initial-setup runbook.
+
+### Changed
+- **Wazuh MCP**: `list-alerts`/`get-alert`/`get-vulnerabilities` now POST `_search` to the Wazuh indexer (`wazuh-alerts-*` / `wazuh-states-vulnerabilities-*`) instead of non-existent Server API endpoints; agents/rules/decoders stay on the Server API; JWT expiry read from the `exp` claim with 401 re-auth.
+- **OpenCTI MCP**: `get-attack-patterns` applies a real `killChainPhases.phase_name` FilterGroup (tactic filter previously ignored); `search-indicators`/`get-indicator` renamed to `search-observables`/`get-observable` (BREAKING tool rename); enrich mutation no longer auto-retried.
+- **TheHive MCP**: `merge-alerts` uses the TheHive 5 bulk endpoint `POST /api/v1/alert/merge/_bulk` and promotes the first alert to a case when none is given; fixed an ingress sub-path bug that dropped `/thehive` from every request via a `joinUrl()` helper.
+- **OpenCTI/TheHive/Cortex/Grafana → OpenSearch** now connect over `https://` with certificate verification against the mounted SOC CA and credentials from `soc-shared-secrets`; all plaintext-http and verify-disabled paths removed. OpenCTI platform/worker pinned to 6.9.5 (matches connectors); all Helm chart `--version`s pinned.
+- **Wazuh manager** `/var/ossec/etc` now persists on a PVC (seed-only-when-empty init) so `client.keys` survive restarts; probes switched from `tcpSocket:1514` to `exec wazuh-control status` + startupProbe; Filebeat CA path corrected to `/etc/ssl/opensearch/root-ca.pem`.
+- **Config de-hardcoding**: every dashboard `localhost:300x/4000/5601/9000/9001` moved to `PUBLIC_*` env; service URLs derived from config.
+- **deploy-stack.sh** now actually deploys the Wazuh Manager StatefulSet + Dashboard + ConfigMap, decrypts/applies SOPS secrets before shared infra, generates certs first, creates `soc-tls-cert`/`soc-auth-secret` for ingress, pins `--version` on all Helm installs, and treats OpenSearch-readiness failure and any unhealthy pod as fatal.
+- **Lima** kubeconfig hardened to mode 600 (was 644); `INSTALL_K3S_VERSION` and a checksum-verified Helm release pinned; port-forwards pinned to `hostIP 127.0.0.1`; duplicated provisioning extracted to shared `lima/provision-k3s.sh`.
+- **Docs reconciled**: Wazuh Dashboard 443→5601, Wazuh agent 4.9.2→4.14.3, NetworkPolicy count → 32, RAM/disk figures aligned, compliance "audited against"→"designed with reference to".
+
+### Fixed
+- Dashboard health probe (`redirect:'manual'` + status classification, probes Wazuh Server API not the UI root); TheHive count array-vs-number unwrap; OpenCTI/Cortex/Grafana partial-shape guards; polling pauses on tab-hidden and backs off on failure.
+- `w2thive.py` TypeError on JSON-null `full_log`/`groups`/`mitre.id`; corrected its "deployed" docstring (integration is NOT wired).
+- Wazuh agent hostNetwork DNS via `dnsPolicy: ClusterFirstWithHostNet`; NFS/teardown/setup-ism `2>/dev/null||true` redirect placement bugs.
+
+### Security
+- **Removed every TLS-verification kill switch**: `NODE_TLS_REJECT_UNAUTHORIZED=0` (dashboard `vite.config.ts`/`.env`/`.env.example`), OpenSearch `verificationMode: none` (Wazuh dashboard), Grafana `tlsSkipVerify: true`, `TH_DB_ES_SSL_VERIFY=false`. The self-signed SOC CA is now trusted by scope only (`NODE_EXTRA_CA_CERTS` / pinned undici dispatcher / mounted `opensearch-ca-cert`).
+- **Dashboard auth boundary** (`src/hooks.server.ts`): `SOC_API_TOKEN` bearer (constant-time compare) + same-origin/CSRF guard on all `/api/*`, fail-closed in production; proxy routes return generic errors and no longer leak upstream host/port/TLS detail.
+- **Fail-closed credentials**: removed `optional:true` from all 4 Wazuh manager/dashboard credential `secretKeyRef`s; Wazuh MCP fails closed without `WAZUH_INDEXER_PASSWORD`.
+- **De-privileged workloads**: Wazuh agent DaemonSet (dropped `privileged:true`, host mounts narrowed from `/` to exact FIM dirs read-only), manager/dashboard (seccomp RuntimeDefault + drop ALL), NFS server (scoped caps).
+- **NetworkPolicy hardening**: hostNetwork agents→manager on 1514/1515 via node ipBlock, dashboard ingress scoped to Traefik, internet-only HTTPS egress (no wildcard `to:[]`). 32 NetworkPolicy objects on disk.
+- **`.claude/settings.json`** references secrets via `${ENV}` instead of inlining live creds; `.gitignore` excludes `*.agekey`/`keys.txt`; `secrets.yaml` stays local while `secrets.enc.yaml` is the committable SOPS bundle.
+- **Supply-chain**: MITRE connector pinned to an ATT&CK release tag (was mutable master); connector image tags tied to the platform tag.
+
+### Removed
+- Dead raw manifests superseded by Helm: `k8s/thehive/deployment.yaml`, `k8s/thehive/cortex/deployment.yaml`, `k8s/opencti/deployment.yaml`, `k8s/shared/rabbitmq-deployment.yaml`.
+- Placeholder CA ConfigMap manifests (`k8s/shared|thehive|monitoring/opensearch-ca-cert.yaml`) — `generate-certs.sh` is now the single source. Empty `k8s/wazuh/indexer/` dir.
+- Three stale per-package `package-lock.json` files (single root workspace lockfile now); dead secret keys `soc-wazuh-secrets/indexer-password` and `soc-thehive-secrets/api-key`; the non-existent `run-sca-scan` MCP tool from docs.
+
+### Verified
+- `npm run build`, `npm run typecheck`, `npm run test` (all workspaces) — PASS. `svelte-check` — 0 errors / 0 warnings. `shellcheck` (warning level) — clean. `kubeconform -strict` over raw `k8s/**` — 64 valid, 0 invalid, 0 errors (11 CRD schema-skips).
+- Integration fixes applied on top of the fleet output: extended `generate-certs.sh` to load the CA ConfigMap into thehive+monitoring; deduped Vite to a single v6 (vitest 3 + root override) to clear `svelte-check`; reconciled NetworkPolicy count to 32 in `VERSIONS.md`/`CLAUDE.md`; corrected `docs/integrations.md` off the removed `soc-thehive-secrets/api-key`; `.nvmrc` set to the installed Node 20.
+- **Known (pre-existing): `gitleaks` reports 14 secrets in git _history_** (the `secrets.yaml` committed in the v1.0.0 / initial commits). `secrets.yaml` is now gitignored and untracked, but history still contains the values — rotate the affected credentials and scrub history (e.g. `git filter-repo`) as an operator step.
+
 ## [1.4.0] — 2026-02-27
 
 Security hardening + code quality fixes across 7 issues from code review.
@@ -89,7 +141,7 @@ Consolidated release — production-ready home SOC stack with full compliance au
 
 ### Security & Compliance
 - Kubernetes-native secret management via `secretKeyRef` (template: `secrets.yaml.example`)
-- **NetworkPolicies** — 23 rules across 5 namespaces (default-deny + explicit allow). ISO 27001 A.8.3/A.8.20, NIST AC-4/SC-7
+- **NetworkPolicies** — 31 policies across 5 namespaces: 5 default-deny-ingress + 5 default-deny-egress + 21 explicit allow (see `docs/VERSIONS.md`). ISO 27001 A.8.3/A.8.20, NIST AC-4/SC-7
 - **TLS 1.2+ enforcement** — TLSOption with ECDHE cipher suites on Traefik ingress. NIST SC-13
 - **Self-signed cert issuer** — cert-manager ClusterIssuer + Certificate resource for automated TLS cert management
 - OpenSearch security plugin with internal user authentication
@@ -98,7 +150,7 @@ Consolidated release — production-ready home SOC stack with full compliance au
 - Cortex RBAC scoped to minimal permissions (create/manage Jobs only)
 - Wazuh Manager: `automountServiceAccountToken: false`, `allowPrivilegeEscalation: false`
 - All container images pinned to specific version tags (no `:latest`)
-- Audited against ISO 27001:2022, NIST 800-53 Rev 5, and OWASP Top 10 for LLM Applications 2025
+- Designed with reference to ISO 27001:2022, NIST 800-53 Rev 5, and OWASP Top 10 for LLM Applications 2025 (control citations are inline; no formal third-party audit was performed)
 
 ### MCP Servers (Claude Code Integration)
 - `@matchbox/wazuh-mcp` — 7 tools: alerts, agents, vulnerabilities, rules, decoders

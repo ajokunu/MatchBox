@@ -1,10 +1,17 @@
 # Cortex Helm Values — Automated Analysis Engine
 # Chart: strangebee/cortex (https://strangebee.github.io/helm-charts/)
+# Chart version: --version 1.0.0   (pin the chart; bump deliberately)
 #
 # Install:
-#   helm install cortex strangebee/cortex -n thehive -f cortex/helm-values.yaml
+#   helm install cortex strangebee/cortex -n thehive --version 1.0.0 -f cortex/helm-values.yaml
 
 cortex:
+  # Pin the image (CLAUDE.md: "all images pinned, no :latest").
+  image:
+    registry: docker.io
+    repository: thehiveproject/cortex
+    tag: "3.1.8"
+
   # Resource limits — slim config
   resources:
     requests:
@@ -14,10 +21,42 @@ cortex:
       memory: "768Mi"
       cpu: "500m"
 
-  # Cortex uses its own Elasticsearch index (separate from TheHive)
+  # Pod/container hardening. Cortex's entrypoint historically switched users via
+  # `su`, so we do NOT force runAsNonRoot at the pod level; instead we drop all
+  # capabilities, block privilege escalation, and apply the RuntimeDefault seccomp
+  # profile so the analyzer-spawning process runs with a minimal kernel surface.
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop: ["ALL"]
+    seccompProfile:
+      type: RuntimeDefault
+
+  # Cortex uses its own Elasticsearch index (separate from TheHive).
+  # OpenSearch is TLS-only + authenticated, so use https://, supply admin creds,
+  # and trust the SOC CA mounted from the opensearch-ca-cert ConfigMap (thehive ns).
   elasticsearch:
-    url: "http://opensearch-cluster-master.shared.svc.cluster.local:9200"
+    url: "https://opensearch-cluster-master.shared.svc.cluster.local:9200"
     indexPrefix: "cortex"
+    username: "admin"
+    passwordFrom:
+      secretKeyRef:
+        name: soc-shared-secrets
+        key: opensearch-password
+    ssl:
+      enabled: true
+      verify: true
+      certificateAuthorities: "/etc/ssl/opensearch/ca.crt"
+
+  # Mount the OpenSearch CA (thehive-ns opensearch-ca-cert ConfigMap, key ca.crt).
+  extraVolumes:
+    - name: opensearch-ca
+      configMap:
+        name: opensearch-ca-cert
+  extraVolumeMounts:
+    - name: opensearch-ca
+      mountPath: /etc/ssl/opensearch
+      readOnly: true
 
   # Kubernetes job runner — how Cortex executes analyzers
   job:
@@ -28,7 +67,10 @@ cortex:
       namespace: "thehive"
       # ServiceAccount with permission to create Jobs (see rbac.yaml)
       serviceAccount: "cortex-job-runner"
-      # NFS volume for sharing data between Cortex and analyzer pods
+      # NFS volume for sharing data between Cortex and analyzer pods.
+      # NOTE: verify the strangebee/cortex chart actually supports
+      # cortex.job.kubernetes.sharedVolume; if not, this block is ignored and the
+      # shared volume must be configured via the chart's documented key instead.
       sharedVolume:
         nfs:
           server: "nfs-server.shared.svc.cluster.local"
@@ -42,7 +84,11 @@ cortex:
           memory: "512Mi"
           cpu: "300m"
 
-  # Analyzer configuration
+  # Analyzer configuration.
+  # NOTE: the strangebee/cortex chart may NOT template an `analyzers` list — in
+  # most Cortex deployments analyzers are enabled post-install via the Cortex UI/API
+  # (Organization -> Analyzers) once API keys are configured. Keep this list as the
+  # intended set; if the chart ignores it, enable these the same way post-install.
   analyzers:
     # VirusTotal — file/hash/IP/domain reputation
     - name: "VirusTotal_GetReport_3_1"

@@ -187,14 +187,30 @@ spec:
   policyTypes:
     - Ingress
   ingress:
-    # Agent log ingestion and registration from same namespace
+    # Agent log ingestion and registration.
+    # The agent DaemonSet runs with hostNetwork: true, so its connections originate
+    # from the NODE host IP, which a podSelector does NOT match (the CNI treats
+    # hostNetwork traffic as node traffic). Admit BOTH:
+    #   (a) in-cluster pods (dashboard, etc.) via podSelector, and
+    #   (b) the node/host source via ipBlock on the agent ports 1514/1515.
+    # The ipBlock covers the k3s pod CIDR (10.42.0.0/16) and the Lima VM/node
+    # ranges. CONFIRM the real node CIDR with `kubectl get nodes -o wide` and the
+    # Lima network; widen/narrow the ipBlock below to match your cluster.
     - from:
         - podSelector: {}
+        - ipBlock:
+            cidr: 10.42.0.0/16   # k3s default pod CIDR (hostNetwork pods surface as node IP within this)
+        - ipBlock:
+            cidr: 192.168.5.0/24  # Lima VZ user-mode network (node host IP)
       ports:
         - protocol: TCP
           port: 1514
         - protocol: TCP
           port: 1515
+    # Server API (55000): pods only — agents use 1514/1515, not the API port.
+    - from:
+        - podSelector: {}
+      ports:
         - protocol: TCP
           port: 55000
 
@@ -212,10 +228,15 @@ spec:
   policyTypes:
     - Ingress
   ingress:
+    # Only Traefik (not the whole busy kube-system namespace) may reach the dashboard.
+    # namespaceSelector + podSelector in the SAME peer = AND (kube-system AND traefik).
     - from:
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: traefik
       ports:
         - protocol: TCP
           port: 5601
@@ -250,10 +271,14 @@ spec:
   policyTypes:
     - Ingress
   ingress:
+    # Traefik (scoped, not all of kube-system) + Wazuh (w2thive integration).
     - from:
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: traefik
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: wazuh
@@ -275,10 +300,14 @@ spec:
   policyTypes:
     - Ingress
   ingress:
+    # Traefik (scoped, not all of kube-system) + same-namespace pods (TheHive).
     - from:
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: traefik
         - podSelector: {}
       ports:
         - protocol: TCP
@@ -314,10 +343,14 @@ spec:
   policyTypes:
     - Ingress
   ingress:
+    # Traefik (scoped, not all of kube-system) + same-namespace pods (worker/connectors).
     - from:
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: traefik
         - podSelector: {}
       ports:
         - protocol: TCP
@@ -353,10 +386,14 @@ spec:
   policyTypes:
     - Ingress
   ingress:
+    # Only Traefik (scoped) may reach Grafana, not all of kube-system.
     - from:
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: traefik
       ports:
         - protocol: TCP
           port: 3000
@@ -470,6 +507,32 @@ spec:
           port: 4000   # OpenCTI metrics
         - protocol: TCP
           port: 14269  # OpenCTI health
+
+---
+# Shared namespace exporters: Redis exporter (9121), MinIO metrics (9000),
+# node-exporter (9100). Without this, default-deny-ingress in `shared` blocks
+# Prometheus from scraping them. RabbitMQ:15692 is already covered by allow-rabbitmq.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-prometheus-scrape
+  namespace: shared
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+      ports:
+        - protocol: TCP
+          port: 9100   # node-exporter
+        - protocol: TCP
+          port: 9121   # Redis exporter (bitnami/redis metrics)
+        - protocol: TCP
+          port: 9000   # MinIO metrics
 
 ---
 # ============================================================
@@ -608,8 +671,19 @@ spec:
           port: 9000   # MinIO
         - protocol: TCP
           port: 2049   # NFS
-    # HTTPS egress for Cortex analyzers (VirusTotal, etc.)
-    - to: []
+    # HTTPS egress for Cortex analyzers (VirusTotal, etc.) — INTERNET ONLY.
+    # `to: []` previously meant "all IPs", letting a compromised analyzer (which runs
+    # third-party code on attacker-supplied observables) pivot to in-cluster services,
+    # the node, or the 169.254/16 link-local/metadata range. Restrict to public IPs by
+    # excepting the cluster pod CIDR, service CIDR, link-local, and RFC1918 ranges.
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8        # k3s pod (10.42/16) + service (10.43/16) + RFC1918
+              - 172.16.0.0/12     # RFC1918
+              - 192.168.0.0/16    # RFC1918 + Lima node network
+              - 169.254.0.0/16    # link-local / cloud metadata
       ports:
         - protocol: TCP
           port: 443
@@ -666,7 +740,17 @@ spec:
         - protocol: TCP
           port: 9000   # MinIO
     # HTTPS egress for threat feed connectors (MITRE, AlienVault, AbuseIPDB, etc.)
-    - to: []
+    # — INTERNET ONLY. Connectors are SSRF-prone (they fetch attacker-influenced
+    # data), so the same hardening as thehive applies: except cluster/service,
+    # link-local/metadata, and RFC1918 ranges from the 0.0.0.0/0 allow.
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8        # k3s pod (10.42/16) + service (10.43/16) + RFC1918
+              - 172.16.0.0/12     # RFC1918
+              - 192.168.0.0/16    # RFC1918 + Lima node network
+              - 169.254.0.0/16    # link-local / cloud metadata
       ports:
         - protocol: TCP
           port: 443
@@ -719,11 +803,13 @@ spec:
         - protocol: TCP
           port: 9100   # node-exporter
         - protocol: TCP
+          port: 9121   # Redis exporter (bitnami/redis metrics)
+        - protocol: TCP
           port: 9200   # OpenSearch
         - protocol: TCP
           port: 4000   # OpenCTI
         - protocol: TCP
-          port: 9000   # TheHive
+          port: 9000   # TheHive / MinIO metrics
         - protocol: TCP
           port: 9001   # Cortex
         - protocol: TCP

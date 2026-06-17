@@ -1,17 +1,19 @@
 import { healthStore, metricsStore } from './stores';
 import type { HealthState, MetricsState } from './stores';
 
-export async function fetchHealth(): Promise<void> {
+export async function fetchHealth(): Promise<boolean> {
   try {
     const resp = await fetch('/api/health');
     if (!resp.ok) {
       console.warn('[MatchBox] health fetch failed:', resp.status);
-      return;
+      return false;
     }
     const data: Record<string, HealthState> = await resp.json();
     healthStore.set(data);
+    return true;
   } catch (err) {
     console.warn('[MatchBox] health fetch error:', err);
+    return false;
   }
 }
 
@@ -39,15 +41,67 @@ export async function fetchAllMetrics(): Promise<void> {
   ]);
 }
 
-export function startPolling(): () => void {
-  fetchHealth();
-  fetchAllMetrics();
+/**
+ * Self-scheduling poller with:
+ *   - visibilitychange gating (pause when the tab is hidden — was hammering SOC APIs
+ *     forever in background tabs),
+ *   - exponential backoff after consecutive failures (cap), reset on success — so a
+ *     down service is not retried at a constant cadence generating endless noise.
+ * Uses recursive setTimeout instead of setInterval so backoff/visibility can adjust the
+ * delay and overlapping in-flight requests can't pile up.
+ */
+function makePoller(
+  task: () => Promise<boolean | void>,
+  baseMs: number,
+  maxMs: number
+): () => void {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let delay = baseMs;
+  let stopped = false;
 
-  const healthInterval = setInterval(fetchHealth, 30_000);
-  const metricsInterval = setInterval(fetchAllMetrics, 60_000);
+  async function tick() {
+    const ok = await task();
+    // task() returns false only on a clear failure (health); metrics return void → treat as ok.
+    if (ok === false) delay = Math.min(delay * 2, maxMs);
+    else delay = baseMs;
+    schedule();
+  }
+
+  function schedule() {
+    clearTimeout(timer);
+    if (stopped || (typeof document !== 'undefined' && document.hidden)) return;
+    timer = setTimeout(tick, delay);
+  }
+
+  function onVisibility() {
+    if (document.hidden) {
+      clearTimeout(timer);
+    } else {
+      // Catch up immediately on focus, then resume the cadence.
+      task().then(schedule);
+    }
+  }
+
+  // Kick off immediately, then schedule.
+  task().then(schedule);
+  if (typeof document !== 'undefined') {
+    document.addEventListener('visibilitychange', onVisibility);
+  }
 
   return () => {
-    clearInterval(healthInterval);
-    clearInterval(metricsInterval);
+    stopped = true;
+    clearTimeout(timer);
+    if (typeof document !== 'undefined') {
+      document.removeEventListener('visibilitychange', onVisibility);
+    }
+  };
+}
+
+export function startPolling(): () => void {
+  const stopHealth = makePoller(fetchHealth, 30_000, 4 * 60_000);
+  const stopMetrics = makePoller(fetchAllMetrics, 60_000, 8 * 60_000);
+  return () => {
+    stopHealth();
+    stopMetrics();
   };
 }

@@ -4,12 +4,19 @@
   import Header from '$lib/components/Header.svelte';
   import Sidebar from '$lib/components/Sidebar.svelte';
   import { startPolling } from '$lib/api';
+  import { themeStore } from '$lib/stores';
 
   let { children } = $props();
 
+  // Single owner of document-level theme application: keep <html data-theme> in sync
+  // with the store. CSS vars (app.css) drive the background, so no body-style dance.
+  $effect(() => {
+    document.documentElement.setAttribute('data-theme', $themeStore);
+  });
+
   onMount(() => {
-    // Clear the inline body background set by app.html anti-FOUC script
-    // so the CSS var(--bg-primary) takes over for theme switching
+    // Clear the inline body background set by the app.html anti-FOUC script so the CSS
+    // var(--bg-primary) takes over once the app has hydrated.
     document.body.style.background = '';
     const stop = startPolling();
     return stop;

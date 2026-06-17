@@ -10,7 +10,7 @@ Browser/Client
       v
   Traefik Ingress Controller
       |
-      +-- /wazuh   --> wazuh-dashboard:443    (wazuh namespace)
+      +-- /wazuh   --> wazuh-dashboard:5601   (wazuh namespace)
       +-- /thehive  --> thehive:9000           (thehive namespace)
       +-- /cortex   --> cortex:9001            (thehive namespace)
       +-- /opencti  --> opencti:4000           (opencti namespace)
@@ -24,7 +24,7 @@ graph TB
         WA[Wazuh Agent DaemonSet] -->|TCP:1514| WM[Wazuh Manager :1514]
         WM -->|TCP:9200| OS
         WM -->|HTTP POST| TH
-        WD[Wazuh Dashboard :443] -->|TCP:9200| OS
+        WD[Wazuh Dashboard :5601] -->|TCP:9200| OS
     end
 
     subgraph "shared namespace"
@@ -72,6 +72,8 @@ graph TB
 | 6443 | HTTPS | k3s API Server | Host only | kubectl access |
 | 1514 | TCP | Wazuh Agent | Internal/NodePort | Agent-to-Manager syslog |
 | 1515 | TCP | Wazuh Registration | Internal/NodePort | Agent enrollment |
+| 55000 | HTTPS | Wazuh Manager API | Internal | Server API (agents/rules/decoders) |
+| 5601 | HTTPS | Wazuh Dashboard | Internal | Web UI (behind Traefik `/wazuh`) |
 | 9200 | TCP | OpenSearch | Internal | REST API |
 | 9300 | TCP | OpenSearch | Internal | Node-to-node transport |
 | 9000 | TCP | TheHive / MinIO | Internal | Shared port, different namespaces |

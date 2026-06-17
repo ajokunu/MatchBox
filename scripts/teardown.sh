@@ -11,8 +11,12 @@ PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 K8S_DIR="$PROJECT_DIR/k8s"
 
 if [ -z "${KUBECONFIG:-}" ]; then
-  KUBECONFIG_PATH="$(limactl list k3s-soc --format '{{.Dir}}')/copied-from-guest/kubeconfig.yaml" 2>/dev/null || true
-  export KUBECONFIG="${KUBECONFIG_PATH:-}"
+  # Guard the command substitution itself (not the assignment) so a missing limactl
+  # neither leaks stderr nor produces a misleading path.
+  LIMA_DIR="$( (limactl list k3s-soc --format '{{.Dir}}' 2>/dev/null) || true )"
+  if [ -n "$LIMA_DIR" ]; then
+    export KUBECONFIG="$LIMA_DIR/copied-from-guest/kubeconfig.yaml"
+  fi
 fi
 
 COMPONENT="${1:-}"
@@ -48,6 +52,9 @@ echo ""
 teardown_ingress() {
   echo "[ingress] Removing Traefik routes..."
   kubectl delete -f "$K8S_DIR/ingress/traefik-routes.yaml" --ignore-not-found
+  # Remove the ingress cert + basic-auth secrets created by deploy_ingress().
+  kubectl delete secret soc-tls-cert -n kube-system --ignore-not-found
+  kubectl delete secret soc-auth-secret -n kube-system --ignore-not-found
 }
 
 teardown_monitoring() {
@@ -60,6 +67,8 @@ teardown_opencti() {
   kubectl delete -f "$K8S_DIR/opencti/connectors/" --ignore-not-found
   helm uninstall opencti -n opencti 2>/dev/null || true
   kubectl delete secret soc-opencti-secrets -n opencti --ignore-not-found
+  # CA-trust ConfigMap created by generate-certs.sh in the opencti namespace.
+  kubectl delete configmap opensearch-ca-cert -n opencti --ignore-not-found
 }
 
 teardown_thehive() {
@@ -72,7 +81,14 @@ teardown_thehive() {
 teardown_wazuh() {
   echo "[wazuh] Removing Wazuh..."
   kubectl delete -f "$K8S_DIR/wazuh/agents/daemonset.yaml" --ignore-not-found
+  # Delete the Dashboard (Deployment + Service + ConfigMap) and Manager (StatefulSet
+  # + Services + ConfigMaps) — mirrors what deploy_wazuh() applies.
+  kubectl delete -f "$K8S_DIR/wazuh/dashboard/deployment.yaml" --ignore-not-found
+  kubectl delete -f "$K8S_DIR/wazuh/dashboard/configmap-dashboard.yaml" --ignore-not-found
   kubectl delete -f "$K8S_DIR/wazuh/manager/" --ignore-not-found
+  # Cert secrets/configmaps created by generate-certs.sh in the wazuh namespace.
+  kubectl delete secret opensearch-certs wazuh-dashboard-certs -n wazuh --ignore-not-found
+  kubectl delete configmap opensearch-ca-cert -n wazuh --ignore-not-found
   helm uninstall wazuh -n wazuh 2>/dev/null || true
 }
 
@@ -84,6 +100,8 @@ teardown_shared() {
   helm uninstall rabbitmq -n shared 2>/dev/null || true
   helm uninstall redis -n shared 2>/dev/null || true
   helm uninstall opensearch -n shared 2>/dev/null || true
+  # Cert secret created by generate-certs.sh in the shared namespace.
+  kubectl delete secret opensearch-certs -n shared --ignore-not-found
 }
 
 teardown_all() {

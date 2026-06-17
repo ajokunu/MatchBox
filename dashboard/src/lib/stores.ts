@@ -30,12 +30,9 @@ export const themeStore = writable<Theme>(getInitialTheme());
 export function toggleTheme() {
   themeStore.update((current) => {
     const next: Theme = current === 'light' ? 'dark' : 'light';
-    if (browser) {
-      localStorage.setItem('matchbox-theme', next);
-      document.documentElement.setAttribute('data-theme', next);
-      // Clear the inline style so CSS var(--bg-primary) takes over
-      document.body.style.background = '';
-    }
+    // Persist only. The document `data-theme` attribute is applied in exactly one place
+    // (+layout.svelte's $effect) so theme application isn't scattered across components.
+    if (browser) localStorage.setItem('matchbox-theme', next);
     return next;
   });
 }

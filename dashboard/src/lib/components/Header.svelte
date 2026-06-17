@@ -8,8 +8,9 @@
   let clock = $state('--:--:-- UTC');
   let isDark = $derived($themeStore === 'dark');
 
+  // NOTE: document-level `data-theme` application now lives in +layout.svelte (one place)
+  // — a child component is the wrong layer to own the document theme attribute.
   onMount(() => {
-    document.documentElement.setAttribute('data-theme', $themeStore);
     const update = () => {
       clock = new Date().toISOString().slice(11, 19) + ' UTC';
     };
@@ -21,7 +22,7 @@
 
 <header class="header">
   <div class="logo-section">
-    <svg class="logo-svg" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
+    <svg class="logo-svg" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="MatchBox SOC logo">
       <defs>
         <linearGradient id="flame" x1="0" y1="1" x2="0" y2="0">
           <stop offset="0%" stop-color="var(--accent)"/>
@@ -48,7 +49,7 @@
         href="/{svc.id}"
         title="{svc.name} - {health?.status ?? 'checking'}"
       >
-        <StatusDot status={health?.status ?? 'checking'} />
+        <StatusDot status={health?.status ?? 'checking'} label={svc.name} />
         <span>{svc.name}</span>
       </a>
     {/each}

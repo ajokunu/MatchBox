@@ -37,9 +37,9 @@ systemctl enable wazuh-agent && systemctl start wazuh-agent
 
 #### macOS (the Mac Mini itself)
 ```bash
-# Download macOS agent from Wazuh
-curl -O https://packages.wazuh.com/4.x/macos/wazuh-agent-4.9.2-1.arm64.pkg
-sudo installer -pkg wazuh-agent-4.9.2-1.arm64.pkg -target /
+# Download macOS agent from Wazuh — match the manager minor (4.14.3, see docs/VERSIONS.md)
+curl -O https://packages.wazuh.com/4.x/macos/wazuh-agent-4.14.3-1.arm64.pkg
+sudo installer -pkg wazuh-agent-4.14.3-1.arm64.pkg -target /
 
 # Configure
 sudo /Library/Ossec/bin/agent-auth -m 127.0.0.1 -p 1515
@@ -49,7 +49,7 @@ sudo /Library/Ossec/bin/wazuh-control start
 ```
 
 #### Windows
-1. Download installer from https://packages.wazuh.com/4.x/windows/wazuh-agent-4.9.2-1.msi
+1. Download installer from https://packages.wazuh.com/4.x/windows/wazuh-agent-4.14.3-1.msi
 2. Run installer, set Manager IP to `<mac-mini-ip>`
 3. Start service: `net start WazuhSvc`
 

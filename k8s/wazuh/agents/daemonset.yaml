@@ -19,12 +19,28 @@ spec:
       # Tolerate all taints to run on every node including control plane
       tolerations:
         - operator: Exists
-      # Host networking for full visibility into node traffic
+      # Host networking for full visibility into node traffic and to reach the
+      # manager on 1514/1515 from the node source IP.
       hostNetwork: true
+      # With hostNetwork the default dnsPolicy (ClusterFirst) bypasses cluster DNS,
+      # so WAZUH_MANAGER=wazuh-manager.wazuh.svc.cluster.local would fail to resolve.
+      # ClusterFirstWithHostNet restores in-cluster DNS resolution.
+      dnsPolicy: ClusterFirstWithHostNet
+      # hostPID is required by rootcheck process inspection (<check_pids>yes</check_pids>
+      # in the manager-distributed config): it needs host-process visibility to detect
+      # hidden/rootkit processes. Kept deliberately; revisit if check_pids is disabled.
       hostPID: true
+      # Security-critical node agent should survive node-pressure eviction.
+      priorityClassName: system-node-critical
+      # Pod-level hardening: default seccomp profile shrinks the syscall surface
+      # even though the agent still needs scoped host-read capabilities below.
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: wazuh-agent
           image: wazuh/wazuh-agent:4.14.3
+          imagePullPolicy: IfNotPresent  # version-tagged; avoid re-pull churn
           resources:
             requests:
               memory: "128Mi"
@@ -35,18 +51,34 @@ spec:
           env:
             - name: WAZUH_MANAGER
               value: "wazuh-manager.wazuh.svc.cluster.local"
+            # PREREQUISITE: the "k8s-nodes" agent group must exist on the manager
+            # (agent_groups -a -g k8s-nodes) before agents enroll, otherwise the
+            # group assignment is silently dropped. Created by the deploy flow.
             - name: WAZUH_AGENT_GROUP
               value: "k8s-nodes"
-          # Mount host filesystem for FIM and log collection
+          # Mount only the specific host directories Wazuh FIM inspects and the logs
+          # the collector reads — read-only. Narrowed from a full host-root ('/') bind
+          # mount to shrink blast radius if the agent image is compromised. These match
+          # the syscheck <directories> in the manager config (/etc,/usr/bin,/usr/sbin,
+          # /bin,/sbin). Add more host paths here only if FIM scope is widened.
           volumeMounts:
-            - name: host-root
-              mountPath: /host
+            - name: host-etc
+              mountPath: /host/etc
+              readOnly: true
+            - name: host-usr-bin
+              mountPath: /host/usr/bin
+              readOnly: true
+            - name: host-usr-sbin
+              mountPath: /host/usr/sbin
+              readOnly: true
+            - name: host-bin
+              mountPath: /host/bin
+              readOnly: true
+            - name: host-sbin
+              mountPath: /host/sbin
               readOnly: true
             - name: host-var-log
               mountPath: /var/log
-              readOnly: true
-            - name: host-etc
-              mountPath: /host/etc
               readOnly: true
           # Health check — verify wazuh-agentd process is running
           livenessProbe:
@@ -61,15 +93,36 @@ spec:
             initialDelaySeconds: 15
             periodSeconds: 30
             failureThreshold: 3
+          # Replace privileged:true with a minimal scoped capability set.
+          # DAC_READ_SEARCH lets FIM/rootcheck read any host file regardless of
+          # DAC permissions (the only privilege those read-only checks need).
+          # Everything else is dropped; no privilege escalation; default seccomp.
           securityContext:
-            privileged: true  # Required for rootcheck and FIM on host
+            privileged: false
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false  # agent writes state under /var/ossec
+            capabilities:
+              drop: ["ALL"]
+              add: ["DAC_READ_SEARCH"]
+            seccompProfile:
+              type: RuntimeDefault
       volumes:
-        - name: host-root
-          hostPath:
-            path: /
-        - name: host-var-log
-          hostPath:
-            path: /var/log
+        # Specific host paths Wazuh inspects (read-only), instead of all of '/'.
         - name: host-etc
           hostPath:
             path: /etc
+        - name: host-usr-bin
+          hostPath:
+            path: /usr/bin
+        - name: host-usr-sbin
+          hostPath:
+            path: /usr/sbin
+        - name: host-bin
+          hostPath:
+            path: /bin
+        - name: host-sbin
+          hostPath:
+            path: /sbin
+        - name: host-var-log
+          hostPath:
+            path: /var/log

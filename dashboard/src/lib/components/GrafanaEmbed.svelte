@@ -1,25 +1,29 @@
 <script lang="ts">
   import { LoaderCircle, ExternalLink, RefreshCw } from 'lucide-svelte';
-  import { grafanaDashboards } from '$lib/config';
+  import { grafanaDashboards, publicUrls } from '$lib/config';
   import { themeStore } from '$lib/stores';
 
   let { height = '100%' }: { height?: string } = $props();
+
+  // Grafana base URL comes from PUBLIC_GRAFANA_URL (was hardcoded http://localhost:3000,
+  // which broke embeds/links for anyone not browsing from the host machine).
+  const grafanaBase = publicUrls.grafana;
 
   let activeTab = $state(0);
   let loading = $state(true);
   let reloading = $state(false);
 
-  // Build Grafana URL with theme param synced to dashboard theme
+  // Build Grafana URL with theme param synced to dashboard theme.
   function buildSrc(index: number, theme: string): string {
     if (index < 0 || index >= grafanaDashboards.length) return '';
     const grafanaTheme = theme === 'dark' ? 'dark' : 'light';
-    return `http://localhost:3000${grafanaDashboards[index].path}&theme=${grafanaTheme}`;
+    return `${grafanaBase}${grafanaDashboards[index].path}&theme=${grafanaTheme}`;
   }
 
   let iframeSrc = $derived(buildSrc(activeTab, $themeStore));
   let externalHref = $derived(
     activeTab >= 0 && activeTab < grafanaDashboards.length
-      ? `http://localhost:3000${grafanaDashboards[activeTab].path.replace('&kiosk', '')}`
+      ? `${grafanaBase}${grafanaDashboards[activeTab].path.replace('&kiosk', '')}`
       : '#'
   );
 
@@ -37,7 +41,10 @@
     setTimeout(() => { reloading = false; }, 50);
   }
 
-  // Timeout: if iframe doesn't load in 10s, show error
+  // NOTE: the Grafana iframe is cross-origin, so JS cannot inspect its content or
+  // reliably detect an HTTP error / login-redirect inside it — `onload` fires even for
+  // error pages. The 10s timeout below is therefore a best-effort fallback only; a
+  // slow-but-healthy Grafana may briefly show the error overlay before loading.
   $effect(() => {
     if (loading && !reloading) {
       const timer = setTimeout(() => {
@@ -60,17 +67,18 @@
       </button>
     {/each}
     <div class="tab-actions">
-      <button class="tab-btn" onclick={reload} title="Reload">
-        <RefreshCw size={12} />
+      <button class="tab-btn" onclick={reload} aria-label="Reload Grafana dashboard" title="Reload">
+        <RefreshCw size={12} aria-hidden="true" />
       </button>
       <a
         href={externalHref}
         target="_blank"
         rel="noopener"
         class="tab-btn"
+        aria-label="Open dashboard in Grafana (new tab)"
         title="Open in Grafana"
       >
-        <ExternalLink size={12} />
+        <ExternalLink size={12} aria-hidden="true" />
       </a>
     </div>
   </div>
@@ -78,13 +86,13 @@
   <div class="frame-container">
     {#if loading}
       <div class="loading-overlay">
-        <LoaderCircle size={28} class="spinner" />
+        <LoaderCircle size={28} class="spinner" aria-hidden="true" />
         <span class="loading-text">Loading dashboard...</span>
       </div>
     {:else if loadError}
-      <div class="loading-overlay">
-        <RefreshCw size={24} />
-        <span class="loading-text">Could not reach Grafana at localhost:3000</span>
+      <div class="loading-overlay" role="alert">
+        <RefreshCw size={24} aria-hidden="true" />
+        <span class="loading-text">Could not reach Grafana</span>
         <button class="retry-btn" onclick={reload}>Retry</button>
       </div>
     {/if}
@@ -92,8 +100,8 @@
       <iframe
         src={iframeSrc}
         title="Grafana Dashboard"
-        class:blend={$themeStore !== 'dark'}
         onload={() => { loading = false; loadError = false; }}
+        onerror={() => { loadError = true; loading = false; }}
       ></iframe>
     {/if}
   </div>
@@ -158,6 +166,10 @@
     background: var(--hover-overlay);
     color: var(--text-primary);
   }
+  .tab-btn:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
   .frame-container {
     flex: 1;
     position: relative;
@@ -167,9 +179,6 @@
     width: 100%;
     height: 100%;
     border: none;
-  }
-  .frame-container iframe.blend {
-    mix-blend-mode: multiply;
   }
   .loading-overlay {
     position: absolute;
@@ -201,9 +210,5 @@
     transition: all 0.2s;
   }
   .retry-btn:hover { border-color: var(--accent); color: var(--text-primary); }
-  :global(.spinner) {
-    animation: spin 1s linear infinite;
-    color: var(--accent);
-  }
-  @keyframes spin { to { transform: rotate(360deg); } }
+  /* .spinner + @keyframes spin are defined once in app.css (shared). */
 </style>

@@ -3,123 +3,201 @@
  * Wazuh MCP Server
  *
  * Provides Claude Code with tools to query the Wazuh SIEM/XDR platform:
- * - list-alerts: List recent alerts with filtering
- * - get-alert: Get full alert details
- * - search-agents: Search registered Wazuh agents
- * - get-agent-info: Get agent details and status
- * - get-vulnerabilities: List detected CVEs per agent
- * - get-rules: Search active detection rules
- * - get-decoders: Search active log decoders
+ * - list-alerts: List recent alerts with filtering         (Indexer / _search)
+ * - get-alert: Get full alert details                      (Indexer / _search)
+ * - search-agents: Search registered Wazuh agents          (Server API)
+ * - get-agent-info: Get agent details and status           (Server API)
+ * - get-vulnerabilities: List detected CVEs per agent       (Indexer / _search)
+ * - get-rules: Search active detection rules               (Server API)
+ * - get-decoders: Search active log decoders               (Server API)
  *
- * Auth: Wazuh REST API uses user/password -> JWT token flow.
- * Environment: WAZUH_API_URL, WAZUH_API_USER, WAZUH_API_PASSWORD
+ * Two distinct backends (per Contract §3):
+ *  - Server API (WAZUH_API_URL, :55000): user/password -> JWT. Owns
+ *    /agents, /agents/{id}, /rules, /decoders. It has NO /alerts or
+ *    /vulnerability endpoints.
+ *  - Indexer / OpenSearch (WAZUH_INDEXER_URL, :9200): Basic auth. Owns the
+ *    wazuh-alerts-* and wazuh-states-vulnerabilities-* indices, queried via
+ *    POST .../_search. Alerts and vulnerabilities live ONLY here.
+ *
+ * TLS: the homelab uses a self-signed CA. Point NODE_EXTRA_CA_CERTS at the SOC
+ * root-ca.pem so Node trusts it WITHOUT disabling verification globally. Never
+ * set NODE_TLS_REJECT_UNAUTHORIZED=0 (would MITM-expose the admin credential).
+ *
+ * Environment:
+ *   WAZUH_API_URL, WAZUH_API_USER, WAZUH_API_PASSWORD           (Server API)
+ *   WAZUH_INDEXER_URL, WAZUH_INDEXER_USER, WAZUH_INDEXER_PASSWORD (Indexer)
+ *   NODE_EXTRA_CA_CERTS  (path to SOC root-ca.pem — required for self-signed TLS)
+ *   Optional: REQUEST_TIMEOUT_MS, MAX_RESPONSE_CHARS, TOKEN_TTL_MS
  */
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
-import { fetchWithRetry, formatResponse } from "@matchbox/mcp-shared";
+import {
+  fetchWithRetry,
+  formatResponse,
+  basicAuth,
+  indexerSearch,
+  safeId,
+  log,
+  toolGuard,
+  startServer,
+  readVersion,
+  REQUEST_TIMEOUT_MS,
+} from "@matchbox/mcp-shared";
+import { buildListAlertsBody, buildGetAlertBody, buildVulnBody } from "./queries.js";
 
-const WAZUH_URL = process.env.WAZUH_API_URL || "https://localhost:55000";
+// --- Server API config (agents / rules / decoders) ---
+const WAZUH_URL = process.env.WAZUH_API_URL || "https://soc.homelab.local:55000";
 const WAZUH_USER = process.env.WAZUH_API_USER;
 const WAZUH_PASS = process.env.WAZUH_API_PASSWORD;
+
+// --- Indexer config (alerts / vulnerabilities) ---
+const INDEXER_URL = process.env.WAZUH_INDEXER_URL || "https://localhost:9200";
+const INDEXER_USER = process.env.WAZUH_INDEXER_USER || "admin";
+const INDEXER_PASS = process.env.WAZUH_INDEXER_PASSWORD;
 
 if (!WAZUH_USER || !WAZUH_PASS) {
   console.error("FATAL: WAZUH_API_USER and WAZUH_API_PASSWORD environment variables are required");
   process.exit(1);
 }
+if (!INDEXER_PASS) {
+  // Alerts/vulnerabilities tools cannot work without indexer creds; fail closed.
+  console.error("FATAL: WAZUH_INDEXER_PASSWORD environment variable is required (used by list-alerts/get-alert/get-vulnerabilities)");
+  process.exit(1);
+}
+
+const INDEXER_AUTH = basicAuth(INDEXER_USER, INDEXER_PASS);
+const ALERTS_INDEX = process.env.WAZUH_ALERTS_INDEX || "wazuh-alerts-*";
+const VULN_INDEX = process.env.WAZUH_VULN_INDEX || "wazuh-states-vulnerabilities-*";
 
 const TOKEN_TTL_MS = parseInt(process.env.TOKEN_TTL_MS || "850000", 10);
-/** Validate ID parameters to prevent path traversal (+ requires at least 1 char) */
-const safeId = z.string().regex(/^[a-zA-Z0-9_.~-]+$/, "Invalid ID format");
 let jwtToken: string | null = null;
 let tokenExpiry = 0;
 
-/** Authenticate and get JWT token */
-async function getToken(): Promise<string> {
-  if (jwtToken && Date.now() < tokenExpiry) return jwtToken;
+/** Decode a JWT's exp claim (seconds since epoch) without verifying the signature. */
+function jwtExpiryMs(token: string): number | null {
+  try {
+    const payload = JSON.parse(Buffer.from(token.split(".")[1], "base64url").toString("utf8")) as {
+      exp?: number;
+    };
+    return typeof payload.exp === "number" ? payload.exp * 1000 : null;
+  } catch {
+    return null;
+  }
+}
 
-  const credentials = Buffer.from(`${WAZUH_USER}:${WAZUH_PASS}`).toString("base64");
+/** Authenticate against the Server API and cache the JWT (expiry from the token itself). */
+async function getToken(force = false): Promise<string> {
+  if (!force && jwtToken && Date.now() < tokenExpiry) return jwtToken;
+
+  // The auth endpoint is a POST; mark retryable since re-authenticating is safe.
   const resp = await fetchWithRetry(`${WAZUH_URL}/security/user/authenticate`, {
     method: "POST",
-    headers: { Authorization: `Basic ${credentials}` },
+    headers: { Authorization: basicAuth(WAZUH_USER!, WAZUH_PASS!) },
+    retryable: true,
   });
 
-  if (!resp.ok) throw new Error(`Auth failed: ${resp.status} ${resp.statusText}`);
-  const data = await resp.json() as { data: { token: string } };
+  if (!resp.ok) throw new Error(`Wazuh auth failed: ${resp.status}`);
+  const data = (await resp.json()) as { data: { token: string } };
   jwtToken = data.data.token;
-  tokenExpiry = Date.now() + TOKEN_TTL_MS;
+  // Prefer the token's real exp claim; fall back to a conservative TTL with margin.
+  const claimExpiry = jwtExpiryMs(jwtToken);
+  tokenExpiry = claimExpiry ? claimExpiry - 30_000 : Date.now() + TOKEN_TTL_MS;
   return jwtToken;
 }
 
-/** Make authenticated API call with timeout and retry */
+/**
+ * Authenticated GET against the Server API. On a 401 (e.g. token expired early
+ * because an admin lowered the TTL), clears the cache and re-auths once.
+ */
 async function wazuhApi(path: string, params: Record<string, string> = {}): Promise<unknown> {
-  const token = await getToken();
-  const url = new URL(path, WAZUH_URL);
-  for (const [k, v] of Object.entries(params)) {
-    if (v) url.searchParams.set(k, v);
+  const call = async (): Promise<Response> => {
+    const token = await getToken();
+    const url = new URL(path, WAZUH_URL);
+    for (const [k, v] of Object.entries(params)) {
+      if (v !== undefined && v !== "") url.searchParams.set(k, v);
+    }
+    return fetchWithRetry(url.toString(), { headers: { Authorization: `Bearer ${token}` } });
+  };
+
+  let resp = await call();
+  if (resp.status === 401) {
+    jwtToken = null; // invalidate and force re-auth
+    await getToken(true);
+    resp = await call();
   }
-
-  const resp = await fetchWithRetry(url.toString(), {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-
-  if (!resp.ok) throw new Error(`Wazuh API error: ${resp.status} ${resp.statusText}`);
+  if (!resp.ok) throw new Error(`Wazuh Server API ${path} returned ${resp.status}`);
   return resp.json();
 }
 
 // --- MCP Server Setup ---
-const server = new McpServer({
-  name: "wazuh-mcp",
-  version: "1.0.0",
-});
+const VERSION = readVersion(new URL("../package.json", import.meta.url), "1.6.0");
+const SERVER_NAME = "wazuh-mcp";
+const server = new McpServer({ name: SERVER_NAME, version: VERSION });
 
-// list-alerts
+/** All Wazuh tools are read-only — establish the readOnlyHint pattern up front. */
+const READ_ONLY = { readOnlyHint: true } as const;
+
+/**
+ * Conservative free-text filter: Wazuh's query grammar uses operators
+ * (;,()=<>~). Strip them so an LLM-supplied string can't alter query logic.
+ * (Defense-in-depth; the Server API token is single-privilege and read-only.)
+ */
+const searchText = z
+  .string()
+  .max(256)
+  .regex(/^[\w .\-/]*$/, "Search text may only contain letters, numbers, spaces, '.', '-', '/', '_'");
+
+// ---------------------------------------------------------------------------
+// list-alerts  — Indexer wazuh-alerts-* / _search
+// ---------------------------------------------------------------------------
 server.tool(
   "list-alerts",
-  "List recent Wazuh SIEM alerts with optional filtering",
+  "List recent Wazuh SIEM alerts with optional filtering (queries the Wazuh indexer)",
   {
     limit: z.number().min(1).max(100).optional().default(20).describe("Max alerts to return"),
-    level_min: z.number().min(1).max(15).optional().describe("Minimum alert level (1-15)"),
-    agent_id: z.string().regex(/^[a-zA-Z0-9_.~-]*$/).optional().describe("Filter by agent ID"),
-    rule_id: z.string().regex(/^[a-zA-Z0-9_.~-]*$/).optional().describe("Filter by rule ID"),
+    level_min: z.number().min(1).max(15).optional().describe("Minimum rule level (1-15)"),
+    agent_id: safeId.optional().describe("Filter by agent ID"),
+    rule_id: safeId.optional().describe("Filter by rule ID"),
   },
-  async ({ limit, level_min, agent_id, rule_id }) => {
-    const params: Record<string, string> = {
-      limit: String(limit),
-      sort: "-timestamp",
-    };
-    if (level_min) params["search"] = `rule.level>=${level_min}`;
-    if (agent_id) params["agent.id"] = agent_id;
-    if (rule_id) params["rule.id"] = rule_id;
-
-    const result = await wazuhApi("/alerts", params);
+  READ_ONLY,
+  toolGuard(SERVER_NAME, "list-alerts", async ({ limit, level_min, agent_id, rule_id }) => {
+    // `!== undefined` (inside the builder) future-proofs against a min(0) relaxation.
+    const body = buildListAlertsBody({ limit, level_min, agent_id, rule_id });
+    const result = await indexerSearch(INDEXER_URL, ALERTS_INDEX, body, INDEXER_AUTH);
     return { content: [{ type: "text" as const, text: formatResponse(result) }] };
-  }
+  })
 );
 
-// get-alert
+// ---------------------------------------------------------------------------
+// get-alert  — Indexer wazuh-alerts-* / _search by document _id
+// ---------------------------------------------------------------------------
 server.tool(
   "get-alert",
-  "Get full details of a specific Wazuh alert",
-  { alert_id: safeId.describe("Alert ID to retrieve") },
-  async ({ alert_id }) => {
-    const result = await wazuhApi(`/alerts/${encodeURIComponent(alert_id)}`);
+  "Get full details of a specific Wazuh alert by document ID (queries the Wazuh indexer)",
+  { alert_id: safeId.describe("Alert document _id to retrieve") },
+  READ_ONLY,
+  toolGuard(SERVER_NAME, "get-alert", async ({ alert_id }) => {
+    const body = buildGetAlertBody(alert_id);
+    const result = await indexerSearch(INDEXER_URL, ALERTS_INDEX, body, INDEXER_AUTH);
     return { content: [{ type: "text" as const, text: formatResponse(result) }] };
-  }
+  })
 );
 
-// search-agents
+// ---------------------------------------------------------------------------
+// search-agents  — Server API /agents
+// ---------------------------------------------------------------------------
 server.tool(
   "search-agents",
   "Search registered Wazuh agents by name, IP, status, or OS",
   {
-    name: z.string().max(256).optional().describe("Agent name filter"),
+    name: searchText.optional().describe("Agent name filter"),
     ip: z.string().max(45).optional().describe("Agent IP filter"),
     status: z.enum(["active", "disconnected", "pending", "never_connected"]).optional(),
     limit: z.number().min(1).max(100).optional().default(20),
   },
-  async ({ name, ip, status, limit }) => {
+  READ_ONLY,
+  toolGuard(SERVER_NAME, "search-agents", async ({ name, ip, status, limit }) => {
     const params: Record<string, string> = { limit: String(limit) };
     if (name) params["name"] = name;
     if (ip) params["ip"] = ip;
@@ -127,94 +205,98 @@ server.tool(
 
     const result = await wazuhApi("/agents", params);
     return { content: [{ type: "text" as const, text: formatResponse(result) }] };
-  }
+  })
 );
 
-// get-agent-info
+// ---------------------------------------------------------------------------
+// get-agent-info  — Server API /agents/{id}
+// ---------------------------------------------------------------------------
 server.tool(
   "get-agent-info",
   "Get detailed info about a specific Wazuh agent",
   { agent_id: safeId.describe("Agent ID") },
-  async ({ agent_id }) => {
-    const result = await wazuhApi(`/agents/${encodeURIComponent(agent_id)}`);
+  READ_ONLY,
+  toolGuard(SERVER_NAME, "get-agent-info", async ({ agent_id }) => {
+    // agent_id is validated by safeId to a URL-safe charset — no encoding needed.
+    const result = await wazuhApi(`/agents/${agent_id}`);
     return { content: [{ type: "text" as const, text: formatResponse(result) }] };
-  }
+  })
 );
 
-// get-vulnerabilities
+// ---------------------------------------------------------------------------
+// get-vulnerabilities  — Indexer wazuh-states-vulnerabilities-* / _search
+// ---------------------------------------------------------------------------
 server.tool(
   "get-vulnerabilities",
-  "List vulnerabilities detected on an agent",
+  "List vulnerabilities (CVEs) detected on an agent (queries the Wazuh indexer)",
   {
     agent_id: safeId.describe("Agent ID"),
     severity: z.enum(["Critical", "High", "Medium", "Low"]).optional(),
     limit: z.number().min(1).max(100).optional().default(20),
   },
-  async ({ agent_id, severity, limit }) => {
-    const params: Record<string, string> = { limit: String(limit) };
-    if (severity) params["severity"] = severity;
-
-    const result = await wazuhApi(`/vulnerability/${encodeURIComponent(agent_id)}`, params);
+  READ_ONLY,
+  toolGuard(SERVER_NAME, "get-vulnerabilities", async ({ agent_id, severity, limit }) => {
+    const body = buildVulnBody({ agent_id, severity, limit });
+    const result = await indexerSearch(INDEXER_URL, VULN_INDEX, body, INDEXER_AUTH);
     return { content: [{ type: "text" as const, text: formatResponse(result) }] };
-  }
+  })
 );
 
-// get-rules
+// ---------------------------------------------------------------------------
+// get-rules  — Server API /rules
+// ---------------------------------------------------------------------------
 server.tool(
   "get-rules",
   "Search active Wazuh detection rules",
   {
-    search: z.string().max(256).optional().describe("Search text in rule descriptions"),
+    search: searchText.optional().describe("Search text in rule descriptions"),
     level: z.number().min(1).max(15).optional().describe("Filter by exact rule level"),
-    group: z.string().max(256).optional().describe("Filter by rule group"),
+    group: searchText.optional().describe("Filter by rule group"),
     limit: z.number().min(1).max(100).optional().default(20),
   },
-  async ({ search, level, group, limit }) => {
+  READ_ONLY,
+  toolGuard(SERVER_NAME, "get-rules", async ({ search, level, group, limit }) => {
     const params: Record<string, string> = { limit: String(limit) };
     if (search) params["search"] = search;
-    if (level) params["level"] = String(level);
+    if (level !== undefined) params["level"] = String(level);
     if (group) params["group"] = group;
 
     const result = await wazuhApi("/rules", params);
     return { content: [{ type: "text" as const, text: formatResponse(result) }] };
-  }
+  })
 );
 
-// get-decoders
+// ---------------------------------------------------------------------------
+// get-decoders  — Server API /decoders
+// ---------------------------------------------------------------------------
 server.tool(
   "get-decoders",
   "Search active Wazuh log decoders",
   {
-    search: z.string().max(256).optional().describe("Search text in decoder names"),
+    search: searchText.optional().describe("Search text in decoder names"),
     limit: z.number().min(1).max(100).optional().default(20),
   },
-  async ({ search, limit }) => {
+  READ_ONLY,
+  toolGuard(SERVER_NAME, "get-decoders", async ({ search, limit }) => {
     const params: Record<string, string> = { limit: String(limit) };
     if (search) params["search"] = search;
 
     const result = await wazuhApi("/decoders", params);
     return { content: [{ type: "text" as const, text: formatResponse(result) }] };
-  }
+  })
 );
 
 // --- Start Server ---
 async function main() {
-  // Connectivity test — warn if Wazuh API is unreachable
-  try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 5_000);
-    const resp = await fetch(`${WAZUH_URL}/`, { signal: controller.signal }).finally(() => clearTimeout(timer));
-    console.error(`Wazuh API connectivity: ${resp.ok ? "OK" : resp.status} (${WAZUH_URL})`);
-  } catch (e) {
-    console.error(`WARNING: Wazuh API unreachable at ${WAZUH_URL} — tools will fail until it's available`);
-  }
-
-  const transport = new StdioServerTransport();
-  await server.connect(transport);
-  console.error("Wazuh MCP server running on stdio");
+  await startServer(server, SERVER_NAME, async () => {
+    // Best-effort Server API reachability probe (uses shared timeout/retry; the
+    // pinned CA via NODE_EXTRA_CA_CERTS applies — no global TLS bypass).
+    const resp = await fetchWithRetry(`${WAZUH_URL}/`, {}, REQUEST_TIMEOUT_MS);
+    if (!resp.ok) throw new Error(`Server API status ${resp.status}`);
+  });
 }
 
 main().catch((err) => {
-  console.error("Fatal:", err.message);
+  log("error", "fatal", { server: SERVER_NAME, detail: err instanceof Error ? err.message : String(err) });
   process.exit(1);
 });

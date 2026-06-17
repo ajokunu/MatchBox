@@ -61,9 +61,12 @@ Designed for 16GB Mac Mini M4. Lima VM gets 10GB RAM.
 
 | State | RAM Usage | What's Running |
 |-------|-----------|----------------|
-| Steady state | ~7.1GB | k3s, OpenSearch, Wazuh, Monitoring (always-on) |
-| Investigation mode | ~10.5GB | + TheHive, Cortex, OpenCTI (on-demand) |
-| Full stack | ~10.5GB | Everything, connectors scheduled via CronJobs |
+| Steady state | ~3.2GB | k3s, OpenSearch, Wazuh, Traefik (always-on) |
+| Investigation mode | ~5.8GB | + TheHive, Cortex, OpenCTI (on-demand) |
+| Full stack | ~7.2GB | Everything, + Prometheus/Grafana, connectors via CronJobs |
+
+> Figures are authoritative in [`docs/VERSIONS.md`](docs/VERSIONS.md) /
+> [`docs/resource-requirements.md`](docs/resource-requirements.md). No mode exceeds the 10GiB VM.
 
 ## MCP Server Integration
 
@@ -89,9 +92,12 @@ The **MatchBox SOC Command Center** is a SvelteKit dashboard that unifies all 5 
 ### Running the Dashboard
 
 ```bash
-# 1. Copy environment config
-cp .env.example .env
-# Edit .env with your service credentials
+# 1. Copy environment config (lives in dashboard/ — the SvelteKit CWD).
+#    The repo-root .env.example is for the MCP servers, not the dashboard.
+#    dashboard/.env.example additionally defines GRAFANA_URL, CORTEX_URL,
+#    WAZUH_DASHBOARD_URL, and NODE_TLS_REJECT_UNAUTHORIZED.
+cp dashboard/.env.example dashboard/.env
+# Edit dashboard/.env with your service credentials
 
 # 2. Port-forward Grafana (from your k3s cluster)
 kubectl port-forward -n monitoring svc/monitoring-grafana 3000:80 &
@@ -112,6 +118,7 @@ npm run dev -- --port 5173
 - **Solarized Theme** — Light/Dark toggle that syncs across the dashboard and embedded Grafana
 
 ## Documentation
+- [Versions & Facts (source of truth)](docs/VERSIONS.md)
 - [Architecture Design](docs/architecture.md)
 - [Network Diagram](docs/network-diagram.md)
 - [Resource Requirements](docs/resource-requirements.md)

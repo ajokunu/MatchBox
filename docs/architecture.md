@@ -50,7 +50,7 @@ The MatchBox is a home SOC built on a single Mac Mini M4 (16GB RAM) running k3s 
 ```
                     +-----------------------------------------+
                     |          Mac Mini M4 (macOS)            |
-                    |  RAM: 16GB | CPU: M4 | Disk: 256GB+    |
+                    |  RAM: 16GB | CPU: M4 | Disk: 120GB+ free |
                     |                                         |
                     |  +-----------------------------------+  |
                     |  |      Lima VM (10GB RAM, 4 CPU)     |  |

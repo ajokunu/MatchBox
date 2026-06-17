@@ -24,9 +24,20 @@ spec:
       template:
         spec:
           restartPolicy: Never
+          # Hardening — connectors parse untrusted external threat-intel data.
+          automountServiceAccountToken: false
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            seccompProfile:
+              type: RuntimeDefault
           containers:
             - name: alienvault-otx
-              image: opencti/connector-alienvault:6.9.5
+              image: opencti/connector-alienvault:6.9.5  # MUST match platform tag (helm-values.yaml)
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop: ["ALL"]
               resources:
                 requests:
                   memory: "128Mi"
@@ -60,7 +71,9 @@ spec:
                       name: soc-opencti-secrets
                       key: alienvault-api-key
                 - name: ALIENVAULT_TLP
-                  value: "White"
+                  # Use the STIX 2.1 form, consistent with the other connectors'
+                  # *_MAX_TLP values. "White" was renamed to "CLEAR" in TLP 2.0.
+                  value: "TLP:CLEAR"
                 - name: ALIENVAULT_PULSE_START_TIMESTAMP
                   value: "2024-01-01T00:00:00"
                 - name: ALIENVAULT_INTERVAL

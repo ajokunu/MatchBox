@@ -1,34 +1,35 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { env } from '$env/dynamic/private';
+import { upstreamFetch, upstreamJson, upstreamErrorResponse } from '$lib/server/upstream';
 
 const GRAFANA_URL = env.GRAFANA_URL || 'http://localhost:3000';
 
 export const GET: RequestHandler = async () => {
   try {
     const [healthResp, dashResp] = await Promise.all([
-      fetch(`${GRAFANA_URL}/api/health`, { signal: AbortSignal.timeout(5000) }),
-      fetch(`${GRAFANA_URL}/api/search?type=dash-db`, { signal: AbortSignal.timeout(5000) })
+      upstreamFetch(`${GRAFANA_URL}/api/health`, { timeoutMs: 5000 }),
+      // Search may 401 without auth; tolerate it (dashboard count is best-effort).
+      upstreamFetch(`${GRAFANA_URL}/api/search?type=dash-db`, { timeoutMs: 5000 }).catch(() => null)
     ]);
 
-    if (!healthResp.ok) throw new Error(`Grafana ${healthResp.status}`);
-    const health = (await healthResp.json()) as { version: string; database: string };
+    const health = await upstreamJson<{ version?: string; database?: string }>(healthResp);
+
     let dashboardCount = 0;
-    try {
-      const dashboards = (await dashResp.json()) as unknown[];
-      dashboardCount = dashboards.length;
-    } catch { /* silent */ }
+    if (dashResp) {
+      try {
+        const dashboards = await upstreamJson<unknown[]>(dashResp);
+        if (Array.isArray(dashboards)) dashboardCount = dashboards.length;
+      } catch { /* best-effort count */ }
+    }
 
     return json({
-      version: health.version,
-      database: health.database,
+      version: health.version ?? 'unknown',
+      database: health.database ?? 'unknown',
       dashboards: dashboardCount,
       status: 'online'
     });
   } catch (err) {
-    return json(
-      { error: (err as Error).message, status: 'error' },
-      { status: 502 }
-    );
+    return upstreamErrorResponse(err);
   }
 };

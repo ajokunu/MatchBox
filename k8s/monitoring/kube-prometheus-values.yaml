@@ -1,10 +1,11 @@
 # kube-prometheus-stack Helm Values — Monitoring for MatchBox SOC
 # Chart: prometheus-community/kube-prometheus-stack
+# Chart version: --version 62.7.0   (pin the chart; bump deliberately)
 #
 # Install:
 #   helm repo add prometheus-community https://prometheus-community.github.io/helm-charts/
 #   helm install monitoring prometheus-community/kube-prometheus-stack \
-#     -n monitoring -f kube-prometheus-values.yaml
+#     -n monitoring --version 62.7.0 -f kube-prometheus-values.yaml
 
 # --- Prometheus ---
 prometheus:
@@ -17,9 +18,13 @@ prometheus:
       limits:
         memory: "384Mi"
         cpu: "250m"
-    # Retention — 15 days (save disk)
+    # Retention — 15 days (save disk).
+    # retentionSize kept well below the PVC size: Prometheus needs headroom above
+    # retentionSize for the head block, WAL, and compaction (~2x). 2GB on a 5Gi PVC
+    # leaves room so WAL/compaction can't push past the volume before size-based
+    # deletion kicks in.
     retention: "15d"
-    retentionSize: "3GB"
+    retentionSize: "2GB"
     # Storage
     storageSpec:
       volumeClaimTemplate:
@@ -41,19 +46,32 @@ grafana:
     limits:
       memory: "384Mi"
       cpu: "250m"
-  # Allow embedding Grafana in SOC Command Center iframes
+  # Grafana auth: require login. Anonymous Viewer access is DISABLED — even though
+  # Traefik basic-auth fronts Grafana, anonymous access gives any holder of the one
+  # shared basic-auth password unauthenticated, unaccountable Viewer access to all
+  # SOC detection data. Authenticate with the soc-grafana-secrets admin account
+  # (provision named per-user accounts for accountability).
+  # allow_embedding stays true so dashboards can still be iframed into the SOC
+  # Command Center; embedding now relies on Grafana's own session/auth.
   grafana.ini:
     security:
       allow_embedding: true
     auth.anonymous:
-      enabled: true
-      org_role: Viewer
+      enabled: false
   # Admin credentials — password from K8s Secret (never hardcoded)
   adminUser: admin
   admin:
     existingSecret: soc-grafana-secrets
     userKey: admin-user
     passwordKey: admin-password
+  # Mount the OpenSearch CA so the datasource can verify the server cert
+  # (instead of skipping verification). ConfigMap opensearch-ca-cert must exist in
+  # the monitoring namespace with key ca.crt (see opensearch-ca-cert config below).
+  extraConfigmapMounts:
+    - name: opensearch-ca
+      configMap: opensearch-ca-cert
+      mountPath: /etc/ssl/opensearch
+      readOnly: true
   # Persistence
   persistence:
     enabled: true
@@ -62,7 +80,10 @@ grafana:
   # Skip init-chown-data — PVC already has correct ownership from initial install
   initChownData:
     enabled: false
-  # Inject OpenSearch password from K8s Secret as env var for datasource provisioning
+  # Inject OpenSearch password from K8s Secret as env var for datasource provisioning.
+  # The opensearch-grafana-auth Secret (key OPENSEARCH_PASSWORD = the value of
+  # soc-shared-secrets/opensearch-password) is created by the deploy scripts
+  # (scripts lane) before this chart is installed — it is NOT created here.
   envFromSecrets:
     - name: opensearch-grafana-auth
   # Data sources — add OpenSearch for Wazuh dashboards
@@ -78,9 +99,15 @@ grafana:
         esVersion: "2.11.0"  # OpenSearch version
         logMessageField: "full_log"
         logLevelField: "rule.level"
-        tlsSkipVerify: true
+        # Verify the OpenSearch server cert (was tlsSkipVerify: true → MITM risk on
+        # the admin credential). Trust the SOC CA mounted at /etc/ssl/opensearch.
+        tlsSkipVerify: false
+        tlsAuthWithCACert: true
       secureJsonData:
         basicAuthPassword: "$__env{OPENSEARCH_PASSWORD}"
+        # CA certificate read from the mounted ConfigMap so Grafana can validate
+        # the self-signed OpenSearch cert.
+        tlsCACert: "$__file{/etc/ssl/opensearch/ca.crt}"
   # Pre-provision Wazuh community dashboards
   dashboardProviders:
     dashboardproviders.yaml:
@@ -115,8 +142,30 @@ alertmanager:
           resources:
             requests:
               storage: "1Gi"
+  # Routing/receivers. Without a real receiver the chart's defaultRules fire into a
+  # null sink and alerting is effectively silent. Default to a webhook so OOM /
+  # pod-down / OpenSearch-red alerts are actually delivered; point WEBHOOK_URL at a
+  # local notifier (or replace with a Slack/email receiver as needed).
+  config:
+    global:
+      resolve_timeout: 5m
+    route:
+      group_by: ["alertname", "namespace"]
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 4h
+      receiver: "soc-default"
+    receivers:
+      - name: "soc-default"
+        webhook_configs:
+          # Replace with the SOC notifier endpoint (e.g. an Alertmanager→Discord/Slack
+          # bridge). Kept as a placeholder so the receiver is wired, not silent.
+          - url: "http://alert-notifier.monitoring.svc.cluster.local:9094/alert"
+            send_resolved: true
 
-# --- Disable components we don't need (save RAM) ---
+# --- Resource-limit core exporters (kept ENABLED — they are needed) ---
+# kubeStateMetrics + nodeExporter stay enabled; we only cap their resources to fit
+# the slim RAM budget. (Previously mislabeled "Disable components we don't need".)
 kubeStateMetrics:
   resources:
     requests:

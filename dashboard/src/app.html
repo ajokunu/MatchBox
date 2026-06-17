@@ -6,7 +6,9 @@
   <link rel="icon" href="%sveltekit.assets%/favicon.svg" />
   <title>MatchBox SOC</title>
   <script>
-    (function(){var t=localStorage.getItem('matchbox-theme')||'light';document.documentElement.setAttribute('data-theme',t);document.body&&(document.body.style.background=t==='dark'?'#002b36':'#fdf6e3')})();
+    /* Anti-FOUC: set only data-theme before paint; CSS vars (app.css) drive the
+       background so there is no inline body-style to set and later clear. */
+    (function(){var t=localStorage.getItem('matchbox-theme')||'light';document.documentElement.setAttribute('data-theme',t)})();
   </script>
   %sveltekit.head%
 </head>

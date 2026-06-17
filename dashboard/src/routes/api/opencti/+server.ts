@@ -1,41 +1,44 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { env } from '$env/dynamic/private';
+import { upstreamFetch, upstreamJson, upstreamErrorResponse } from '$lib/server/upstream';
 
 const OPENCTI_URL = env.OPENCTI_URL || 'http://localhost:4000';
 const OPENCTI_TOKEN = env.OPENCTI_TOKEN || '';
 
-async function graphql(query: string): Promise<unknown> {
-  const resp = await fetch(`${OPENCTI_URL}/graphql`, {
+async function graphql(query: string): Promise<Record<string, unknown>> {
+  const resp = await upstreamFetch(`${OPENCTI_URL}/graphql`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${OPENCTI_TOKEN}`,
       'Content-Type': 'application/json'
     },
-    body: JSON.stringify({ query }),
-    signal: AbortSignal.timeout(10_000)
+    body: JSON.stringify({ query })
   });
-
-  if (!resp.ok) throw new Error(`OpenCTI ${resp.status}`);
-  const result = (await resp.json()) as { data: unknown; errors?: unknown[] };
+  const result = await upstreamJson<{ data?: Record<string, unknown>; errors?: unknown[] }>(resp);
   if (result.errors) throw new Error('GraphQL error');
-  return result.data;
+  return result.data ?? {};
+}
+
+// Narrow accessor: tolerate partial/missing GraphQL shapes without throwing TypeErrors.
+function count(node: unknown): number {
+  const c = (node as { pageInfo?: { globalCount?: number } } | undefined)?.pageInfo?.globalCount;
+  return typeof c === 'number' ? c : 0;
 }
 
 export const GET: RequestHandler = async () => {
-  // If no token configured, return minimal status
+  // If no token configured, return minimal status only.
   if (!OPENCTI_TOKEN) {
     try {
-      const resp = await fetch(`${OPENCTI_URL}/health`, { signal: AbortSignal.timeout(5000) });
-      if (!resp.ok) throw new Error(`OpenCTI health ${resp.status}`);
+      await upstreamFetch(`${OPENCTI_URL}/health`, { timeoutMs: 5000 });
       return json({ status: 'online', note: 'No API token configured' });
-    } catch {
-      return json({ status: 'offline' }, { status: 502 });
+    } catch (err) {
+      return upstreamErrorResponse(err);
     }
   }
 
   try {
-    const data = (await graphql(`{
+    const data = await graphql(`{
       about { version }
       indicators(first: 0) { pageInfo { globalCount } }
       stixCyberObservables(first: 0) { pageInfo { globalCount } }
@@ -43,31 +46,24 @@ export const GET: RequestHandler = async () => {
       malwares(first: 0) { pageInfo { globalCount } }
       threatActorsIndividual: threatActorsIndividuals(first: 0) { pageInfo { globalCount } }
       connectors { id name active }
-    }`)) as {
-      about: { version: string };
-      indicators: { pageInfo: { globalCount: number } };
-      stixCyberObservables: { pageInfo: { globalCount: number } };
-      reports: { pageInfo: { globalCount: number } };
-      malwares: { pageInfo: { globalCount: number } };
-      threatActorsIndividual: { pageInfo: { globalCount: number } };
-      connectors: Array<{ id: string; name: string; active: boolean }>;
-    };
+    }`);
+
+    const connectors = Array.isArray(data.connectors)
+      ? (data.connectors as Array<{ active?: boolean }>)
+      : [];
 
     return json({
-      version: data.about.version,
-      indicators: data.indicators.pageInfo.globalCount,
-      observables: data.stixCyberObservables.pageInfo.globalCount,
-      reports: data.reports.pageInfo.globalCount,
-      malwares: data.malwares.pageInfo.globalCount,
-      threatActors: data.threatActorsIndividual.pageInfo.globalCount,
-      connectors: data.connectors.length,
-      activeConnectors: data.connectors.filter((c) => c.active).length,
+      version: (data.about as { version?: string } | undefined)?.version ?? 'unknown',
+      indicators: count(data.indicators),
+      observables: count(data.stixCyberObservables),
+      reports: count(data.reports),
+      malwares: count(data.malwares),
+      threatActors: count(data.threatActorsIndividual),
+      connectors: connectors.length,
+      activeConnectors: connectors.filter((c) => c.active).length,
       status: 'online'
     });
   } catch (err) {
-    return json(
-      { error: (err as Error).message, status: 'error' },
-      { status: 502 }
-    );
+    return upstreamErrorResponse(err);
   }
 };

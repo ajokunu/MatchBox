@@ -9,8 +9,10 @@ Three custom MCP (Model Context Protocol) servers provide Claude Code with direc
 ```
 Claude Code (macOS)
       |
-      +-- wazuh-mcp -----> Wazuh REST API (https://wazuh-manager:55000)
-      |                     Auth: user/password -> JWT token
+      +-- wazuh-mcp -----> Wazuh Server API (https://wazuh-manager:55000)
+      |                     Auth: user/password -> JWT token  [agents, rules, decoders]
+      |                +--> Wazuh Indexer    (https://wazuh-indexer:9200)
+      |                     Auth: Basic                       [alerts, vulnerabilities]
       |
       +-- thehive-mcp ---> TheHive REST API (http://thehive:9000/api/v1)
       |                     Auth: API key header
@@ -32,25 +34,38 @@ All three servers run on the macOS host and connect to services inside the Lima 
 | `search-agents` | Search registered agents | `name`, `ip`, `status`, `os_platform` |
 | `get-agent-info` | Get agent details + last keep-alive | `agent_id` |
 | `get-vulnerabilities` | List detected vulnerabilities | `agent_id`, `severity`, `cve` |
-| `run-sca-scan` | Trigger Security Configuration Assessment | `agent_id` |
 | `get-rules` | Search active detection rules | `search`, `level`, `group` |
 | `get-decoders` | Search active log decoders | `search`, `file` |
 
-### API Endpoints Used
-- `POST /security/user/authenticate` -> JWT token
-- `GET /alerts` -> alert list with filtering
-- `GET /agents` -> agent inventory
-- `GET /vulnerability/{agent_id}` -> vulnerability scan results
-- `PUT /sca/{agent_id}` -> trigger SCA scan
-- `GET /rules` -> detection rule catalog
-- `GET /decoders` -> decoder catalog
+> 7 tools total (no `run-sca-scan` — SCA triggering is not implemented). See
+> `docs/VERSIONS.md` for the canonical count.
+
+### APIs Used
+
+Two endpoints, because alerts/vulnerabilities are **not** on the Wazuh Server API:
+
+- **Wazuh Server API** (`WAZUH_API_URL`, port 55000) — agents, rules, decoders:
+  - `POST /security/user/authenticate` -> JWT token
+  - `GET /agents` -> agent inventory (`search-agents`, `get-agent-info`)
+  - `GET /rules` -> detection rule catalog (`get-rules`)
+  - `GET /decoders` -> decoder catalog (`get-decoders`)
+- **Wazuh Indexer / OpenSearch** (`WAZUH_INDEXER_URL`, port 9200, Basic auth) — alerts and
+  vulnerabilities live only in the indexer, queried via `_search`:
+  - `POST /wazuh-alerts-*/_search` -> alert list / single alert (`list-alerts`, `get-alert`)
+  - `POST /wazuh-states-vulnerabilities-*/_search` -> vulnerabilities (`get-vulnerabilities`)
 
 ### Environment Variables
 ```
+# Server API (agents, rules, decoders)
 WAZUH_API_URL=https://localhost:55000
 WAZUH_API_USER=wazuh-wui
 WAZUH_API_PASSWORD=<from-k8s-secret>
 WAZUH_VERIFY_SSL=false
+
+# Indexer / OpenSearch (alerts, vulnerabilities — queried via _search)
+WAZUH_INDEXER_URL=https://localhost:9200
+WAZUH_INDEXER_USER=admin
+WAZUH_INDEXER_PASSWORD=<from-k8s-secret>
 ```
 
 ## thehive-mcp
@@ -121,26 +136,27 @@ OPENCTI_TOKEN=<from-k8s-secret>
 
 ## Package Structure (Each Server)
 
+Each server is a single-file TypeScript package; shared HTTP/formatting helpers were
+extracted into the `@matchbox/mcp-shared` package (CHANGELOG 1.4.0).
+
 ```
 {server}-mcp/
   package.json
   tsconfig.json
   src/
-    index.ts        # MCP server entrypoint, tool registration
-    client.ts       # API client (REST or GraphQL)
-    tools/          # One file per tool
-      list-alerts.ts
-      get-alert.ts
-      ...
-    types.ts        # TypeScript interfaces for API responses
+    index.ts        # Entire server: client + tool registration + handlers
   README.md
+
+mcp-servers/shared/   # @matchbox/mcp-shared — fetchWithRetry(), formatResponse(),
+                      # RETRYABLE_CODES, REQUEST_TIMEOUT_MS, MAX_RESPONSE_CHARS
 ```
 
 ### Dependencies (shared across all three)
 ```json
 {
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.0.0",
+    "@matchbox/mcp-shared": "file:../shared",
+    "@modelcontextprotocol/sdk": "^1.9.0",
     "zod": "^3.22.0"
   },
   "devDependencies": {
@@ -162,7 +178,9 @@ In `.claude/settings.json`:
       "args": ["tsx", "mcp-servers/wazuh-mcp/src/index.ts"],
       "env": {
         "WAZUH_API_URL": "https://localhost:55000",
-        "WAZUH_API_USER": "wazuh-wui"
+        "WAZUH_API_USER": "wazuh-wui",
+        "WAZUH_INDEXER_URL": "https://localhost:9200",
+        "WAZUH_INDEXER_USER": "admin"
       }
     },
     "thehive": {

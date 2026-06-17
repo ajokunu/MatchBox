@@ -1,0 +1,93 @@
+# SOC-specific Prometheus alerting rules for MatchBox.
+# Complements the kube-prometheus-stack chart's defaultRules with signals that
+# matter on a tight 16GB budget where OOM is a real risk. Requires the
+# Prometheus Operator CRDs installed by the chart, and an Alertmanager receiver
+# (configured in kube-prometheus-values.yaml) for these to actually notify.
+#
+# Apply AFTER the chart is installed (CRDs must exist):
+#   kubectl apply -f k8s/monitoring/soc-prometheus-rules.yaml
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: soc-alerts
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/part-of: matchbox-soc
+    # release label lets the operator's ruleSelector pick this up.
+    release: monitoring
+spec:
+  groups:
+    - name: soc.resource
+      rules:
+        # Pod OOMKilled — the #1 failure mode on the slim RAM budget.
+        - alert: PodOOMKilled
+          expr: |
+            kube_pod_container_status_last_terminated_reason{reason="OOMKilled"} == 1
+          for: 1m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Pod {{ $labels.namespace }}/{{ $labels.pod }} was OOMKilled"
+            description: "Container {{ $labels.container }} hit its memory limit. Review limits in the slim config."
+
+        # Frequent restarts — crashloop / instability.
+        - alert: PodCrashLooping
+          expr: |
+            increase(kube_pod_container_status_restarts_total[15m]) > 3
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Pod {{ $labels.namespace }}/{{ $labels.pod }} is crash-looping"
+            description: "More than 3 restarts in 15m."
+
+        # Node disk pressure — protects the small local-path PVCs (Prometheus, etc.).
+        - alert: NodeDiskPressure
+          expr: |
+            kube_node_status_condition{condition="DiskPressure",status="true"} == 1
+          for: 2m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Node {{ $labels.node }} under disk pressure"
+            description: "Local-path volumes may be near full; check Prometheus/OpenSearch retention."
+
+    - name: soc.availability
+      rules:
+        # Wazuh manager down — the SIEM core. Series exposed via the manager metrics.
+        - alert: WazuhManagerDown
+          expr: |
+            absent(up{namespace="wazuh", pod=~"wazuh-manager.*"} == 1)
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Wazuh Manager is down"
+            description: "No healthy wazuh-manager target for 5m — alert ingestion is stopped."
+
+        # OpenSearch cluster not green — yellow/red degrades the whole stack.
+        # Requires the OpenSearch Prometheus exporter to expose cluster status
+        # (opensearch_cluster_status: 0=green,1=yellow,2=red, per the exporter).
+        - alert: OpenSearchClusterNotGreen
+          expr: |
+            max(opensearch_cluster_status) > 0
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "OpenSearch cluster status is not green"
+            description: "Cluster status is yellow/red for 10m — indices may be unassigned."
+
+    - name: soc.connectors
+      rules:
+        # Threat-intel connector CronJob failures (AlienVault/AbuseIPDB/MITRE).
+        - alert: ConnectorCronJobFailed
+          expr: |
+            kube_job_status_failed{namespace="opencti", job_name=~"opencti-connector-.*"} > 0
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "OpenCTI connector job {{ $labels.job_name }} failed"
+            description: "A threat-intel import CronJob failed — feeds may be stale."

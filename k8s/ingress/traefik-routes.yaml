@@ -1,24 +1,21 @@
 # Traefik IngressRoutes for MatchBox SOC
-# Exposes all SOC dashboards under soc.homelab.local with path-based routing
+# Exposes all SOC dashboards under soc.homelab.local with path-based routing.
 #
-# Prerequisites:
-#   - Traefik installed (via helm, since we disabled k3s built-in)
-#   - Add to /etc/hosts: 127.0.0.1 soc.homelab.local
-#   - Self-signed TLS cert created (see below)
+# Prerequisites (all created by the deploy scripts BEFORE these routes are applied):
+#   - Traefik installed via helm (k3s built-in disabled).
+#   - /etc/hosts: 127.0.0.1 soc.homelab.local
+#   - soc-tls-cert  (kube-system, kubernetes.io/tls) — created by
+#     scripts/generate-certs.sh (openssl; CN soc.homelab.local).
+#   - soc-auth-secret (kube-system) — htpasswd users for the basic-auth middleware,
+#     created by deploy-stack.sh's deploy_ingress() from $SOC_DASHBOARD_PASSWORD.
+#   This manifest references both secrets but does NOT create them (scripts lane owns
+#   secret creation; see the IMPLEMENTATION-CONTRACT canonical names).
 #
 # Install Traefik:
 #   helm repo add traefik https://traefik.github.io/charts
 #   helm install traefik traefik/traefik -n kube-system \
 #     --set resources.requests.memory=64Mi \
 #     --set resources.limits.memory=128Mi
-#
-# Generate self-signed TLS cert:
-#   openssl req -x509 -nodes -days 3650 -newkey rsa:2048 \
-#     -keyout tls.key -out tls.crt \
-#     -subj "/CN=soc.homelab.local" \
-#     -addext "subjectAltName=DNS:soc.homelab.local"
-#   kubectl create secret tls soc-tls-cert \
-#     --cert=tls.crt --key=tls.key -n kube-system
 
 ---
 # TLS minimum version — enforce TLS 1.2+
@@ -48,7 +45,13 @@ spec:
     secretName: soc-tls-cert
 
 ---
-# BasicAuth middleware — adds a password layer on top of each app's own auth
+# BasicAuth middleware — adds a password layer on top of each app's own auth.
+# The `soc-auth-secret` (key: users, bcrypt htpasswd line) is created by
+# deploy-stack.sh deploy_ingress() BEFORE these routes are applied — fail-fast if the
+# credential env var is unset. Do NOT create it here. Generated with:
+#   htpasswd -nbB "$SOC_AUTH_USER" "$SOC_DASHBOARD_PASSWORD"
+#   kubectl create secret generic soc-auth-secret -n kube-system \
+#     --from-literal=users='<htpasswd-line>' --dry-run=client -o yaml | kubectl apply -f -
 apiVersion: traefik.io/v1alpha1
 kind: Middleware
 metadata:
@@ -57,8 +60,6 @@ metadata:
 spec:
   basicAuth:
     secret: soc-auth-secret
-    # Create secret: htpasswd -nb admin <password> | base64
-    # kubectl create secret generic soc-auth-secret --from-literal=users='admin:$apr1$...'
 
 ---
 # Wazuh Dashboard — /wazuh

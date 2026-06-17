@@ -1,40 +1,79 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { env } from '$env/dynamic/private';
+import { upstreamFetch, upstreamJson, upstreamErrorResponse } from '$lib/server/upstream';
 
 const WAZUH_API = env.WAZUH_API_URL || 'https://localhost:55000';
 const WAZUH_USER = env.WAZUH_API_USER || 'wazuh-wui';
 const WAZUH_PASS = env.WAZUH_API_PASSWORD || '';
 
+/**
+ * Single-tenant module-scoped JWT cache. This SOC dashboard authenticates with ONE
+ * shared service credential, so a process-global token is correct here (it is NOT a
+ * per-user cache). `inflight` coalesces concurrent cold requests so N parallel calls
+ * trigger a single authenticate() instead of a thundering herd.
+ */
 let jwtToken: string | null = null;
 let tokenExpiry = 0;
+let inflight: Promise<string> | null = null;
 const TOKEN_TTL_MS = 850_000;
+
+async function authenticate(): Promise<string> {
+  const credentials = Buffer.from(`${WAZUH_USER}:${WAZUH_PASS}`).toString('base64');
+  // pinSocCa: Wazuh is the only credential-bearing self-signed HTTPS upstream, so we
+  // pin the SOC CA here instead of disabling TLS verification process-wide.
+  const resp = await upstreamFetch(`${WAZUH_API}/security/user/authenticate`, {
+    method: 'POST',
+    headers: { Authorization: `Basic ${credentials}` },
+    pinSocCa: true
+  });
+  const data = await upstreamJson<{ data?: { token?: string } }>(resp);
+  const token = data.data?.token;
+  if (!token) throw new Error('Wazuh auth: no token in response');
+  jwtToken = token;
+  tokenExpiry = Date.now() + TOKEN_TTL_MS;
+  return token;
+}
 
 async function getToken(): Promise<string> {
   if (jwtToken && Date.now() < tokenExpiry) return jwtToken;
+  // Coalesce concurrent refreshes onto a single in-flight authenticate().
+  if (!inflight) {
+    inflight = authenticate().finally(() => {
+      inflight = null;
+    });
+  }
+  return inflight;
+}
 
-  const credentials = Buffer.from(`${WAZUH_USER}:${WAZUH_PASS}`).toString('base64');
-  const resp = await fetch(`${WAZUH_API}/security/user/authenticate`, {
-    method: 'POST',
-    headers: { Authorization: `Basic ${credentials}` },
-    signal: AbortSignal.timeout(10_000)
-  });
-
-  if (!resp.ok) throw new Error(`Wazuh auth failed: ${resp.status}`);
-  const data = (await resp.json()) as { data: { token: string } };
-  jwtToken = data.data.token;
-  tokenExpiry = Date.now() + TOKEN_TTL_MS;
-  return jwtToken;
+function invalidateToken() {
+  jwtToken = null;
+  tokenExpiry = 0;
 }
 
 async function wazuhFetch(path: string): Promise<unknown> {
   const token = await getToken();
-  const resp = await fetch(`${WAZUH_API}${path}`, {
-    headers: { Authorization: `Bearer ${token}` },
-    signal: AbortSignal.timeout(10_000)
-  });
-  if (!resp.ok) throw new Error(`Wazuh API ${resp.status}`);
-  return resp.json();
+  try {
+    const resp = await upstreamFetch(`${WAZUH_API}${path}`, {
+      headers: { Authorization: `Bearer ${token}` },
+      pinSocCa: true
+    });
+    return upstreamJson(resp);
+  } catch (err) {
+    // A cached token may have been revoked server-side before its TTL. Reset and retry
+    // once so we don't fail every call for up to ~14 minutes.
+    const msg = (err as Error).message ?? '';
+    if (msg.includes('401') || msg.includes('403')) {
+      invalidateToken();
+      const fresh = await getToken();
+      const resp = await upstreamFetch(`${WAZUH_API}${path}`, {
+        headers: { Authorization: `Bearer ${fresh}` },
+        pinSocCa: true
+      });
+      return upstreamJson(resp);
+    }
+    throw err;
+  }
 }
 
 export const GET: RequestHandler = async () => {
@@ -48,12 +87,12 @@ export const GET: RequestHandler = async () => {
     ]);
 
     const stats = statsResp as {
-      data: { affected_items: Array<{ alerts: Array<{ sigid: number; level: number; times: number }> }> };
+      data?: { affected_items?: Array<{ alerts?: Array<{ sigid: number; level: number; times: number }> }> };
     };
     const agents = agentsResp as {
-      data: {
-        total_affected_items: number;
-        affected_items: Array<{
+      data?: {
+        total_affected_items?: number;
+        affected_items?: Array<{
           id: string; name: string; status: string;
           os?: { name?: string; version?: string };
           ip?: string; version?: string;
@@ -62,24 +101,24 @@ export const GET: RequestHandler = async () => {
       };
     };
     const info = infoResp as {
-      data: { affected_items: Array<{ version: string }> };
+      data?: { affected_items?: Array<{ version: string }> };
     };
     const rules = rulesResp as {
-      data: { total_affected_items: number };
+      data?: { total_affected_items?: number };
     };
     const sca = scaResp as {
       data?: {
-        affected_items: Array<{
+        affected_items?: Array<{
           name: string; score: number; pass: number; fail: number;
           invalid: number; not_applicable: number; total_checks: number; policy_id: string;
         }>;
       };
     } | null;
 
-    // Sum all alert counts from stats
+    // Sum all alert counts from stats (guarded against partial/missing shapes).
     let totalAlerts = 0;
     let criticalAlerts = 0;
-    for (const hour of stats.data.affected_items) {
+    for (const hour of stats.data?.affected_items ?? []) {
       for (const alert of hour.alerts ?? []) {
         totalAlerts += alert.times;
         if (alert.level >= 10) criticalAlerts += alert.times;
@@ -87,7 +126,7 @@ export const GET: RequestHandler = async () => {
     }
 
     // Agent details
-    const agentList = agents.data.affected_items.map((a) => ({
+    const agentList = (agents.data?.affected_items ?? []).map((a) => ({
       id: a.id,
       name: a.name,
       status: a.status,
@@ -97,7 +136,7 @@ export const GET: RequestHandler = async () => {
       registered: a.dateAdd ?? 'unknown'
     }));
 
-    const totalAgents = agents.data.total_affected_items;
+    const totalAgents = agents.data?.total_affected_items ?? agentList.length;
     const activeAgents = agentList.filter((a) => a.status === 'active').length;
 
     // SCA compliance
@@ -117,16 +156,14 @@ export const GET: RequestHandler = async () => {
       criticalAlerts,
       activeAgents,
       totalAgents,
-      totalRules: rules.data.total_affected_items,
-      version: info.data.affected_items?.[0]?.version ?? 'unknown',
+      totalRules: rules.data?.total_affected_items ?? 0,
+      version: info.data?.affected_items?.[0]?.version ?? 'unknown',
       agents: agentList,
       sca: scaPolicies,
       status: 'online'
     });
   } catch (err) {
-    return json(
-      { error: (err as Error).message, status: 'error' },
-      { status: 502 }
-    );
+    // Generic body only — see upstreamErrorResponse (no internal topology leaked).
+    return upstreamErrorResponse(err);
   }
 };

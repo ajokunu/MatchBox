@@ -1,13 +1,12 @@
 <script lang="ts">
   import { page } from '$app/stores';
-  import { Shield, ChartColumn, Radar, ShieldAlert, Brain, LayoutDashboard, ExternalLink } from 'lucide-svelte';
+  import { LayoutDashboard, ExternalLink } from 'lucide-svelte';
   import StatusDot from './StatusDot.svelte';
   import { healthStore } from '$lib/stores';
-  import { services } from '$lib/config';
+  import { services, iconMap } from '$lib/config';
 
-  const iconMap: Record<string, typeof Shield> = {
-    Shield, ChartColumn, Radar, ShieldAlert, Brain
-  };
+  // Single version source — injected from package.json via Vite (was a stale "v1.5.0" literal).
+  const version = __APP_VERSION__;
 </script>
 
 <nav class="sidebar">
@@ -27,9 +26,9 @@
       class="nav-item"
       class:active={$page.url.pathname === `/${svc.id}`}
     >
-      <Icon size={16} />
+      <Icon size={16} aria-hidden="true" />
       <span class="nav-name">{svc.name}</span>
-      <StatusDot status={health?.status ?? 'checking'} />
+      <StatusDot status={health?.status ?? 'checking'} label={svc.name} />
     </a>
   {/each}
 
@@ -43,13 +42,13 @@
       rel="noopener"
       class="nav-item external"
     >
-      <ExternalLink size={12} />
+      <ExternalLink size={12} aria-hidden="true" />
       <span class="nav-name">{svc.name}</span>
     </a>
   {/each}
 
   <div class="nav-footer">
-    <span class="footer-version">v1.5.0</span>
+    <span class="footer-version">v{version}</span>
   </div>
 </nav>
 
