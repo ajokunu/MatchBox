@@ -22,18 +22,19 @@ data:
       </global>
 
       <!-- Agent enrollment (authd on 1515) -->
-      <!-- Hardening: bind each registration to its source IP so a stolen agent key
-           cannot be replayed from a different host. use_source_ip=yes is a no-secret
-           win and is combined with the tight 1515 NetworkPolicy (node ipBlock only).
-           NOTE: password-based enrollment is the stronger control but requires a
-           registration-password Secret key + authd.pass seeding wired across the
-           agent DaemonSet and the manager initContainer. That secret key is not yet
-           in the canonical secret set (Contract Section 1), so it is intentionally
-           deferred to avoid breaking enrollment with an unsatisfiable use_password. -->
+      <!-- Hardening (WAVE-2, finding 3): password-based enrollment is now ENABLED.
+           use_password=yes makes authd require the shared registration password seeded
+           into /var/ossec/etc/authd.pass by the manager initContainer (from
+           soc-wazuh-secrets/registration-password); the agent DaemonSet presents the
+           same value via WAZUH_REGISTRATION_PASSWORD. This stops any host that can reach
+           1515 from silently enrolling. use_source_ip=yes additionally binds each
+           registration to its source IP (a stolen key cannot be replayed from another
+           host), layered on the tight 1515 NetworkPolicy (node ipBlock only). -->
       <auth>
         <disabled>no</disabled>
         <port>1515</port>
         <use_source_ip>yes</use_source_ip>
+        <use_password>yes</use_password>
         <purge>yes</purge>
       </auth>
 

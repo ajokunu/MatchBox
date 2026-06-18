@@ -1,7 +1,7 @@
 <script lang="ts">
-  import ServiceDetailLayout from '$lib/components/ServiceDetailLayout.svelte';
-  import StatBox from '$lib/components/StatBox.svelte';
-  import { publicUrls, LOADING_PLACEHOLDER } from '$lib/config';
+import ServiceDetailLayout from '$lib/components/ServiceDetailLayout.svelte';
+import StatBox from '$lib/components/StatBox.svelte';
+import { LOADING_PLACEHOLDER, publicUrls } from '$lib/config';
 </script>
 
 <ServiceDetailLayout
@@ -17,7 +17,9 @@
     <div class="stats-row">
       <StatBox label="Status" value={String(data.status ?? 'unknown')} color="green" />
       <StatBox label="Version" value={String(data.version ?? LOADING_PLACEHOLDER)} />
-      <StatBox label="Analyzers" value={Number(data.analyzers ?? 0)} color="accent" />
+      <!-- Empty placeholder until Cortex is configured, so it reads as "not set up yet"
+           rather than a genuine zero analyzers (finding 22). -->
+      <StatBox label="Analyzers" value={Number(data.analyzers ?? 0)} color="accent" empty={data.analyzers === undefined} />
       <StatBox
         label="Config"
         value={data.configured ? 'Active' : 'Setup Required'}

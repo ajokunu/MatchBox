@@ -95,7 +95,8 @@ The **MatchBox SOC Command Center** is a SvelteKit dashboard that unifies all 5 
 # 1. Copy environment config (lives in dashboard/ — the SvelteKit CWD).
 #    The repo-root .env.example is for the MCP servers, not the dashboard.
 #    dashboard/.env.example additionally defines GRAFANA_URL, CORTEX_URL,
-#    WAZUH_DASHBOARD_URL, and NODE_TLS_REJECT_UNAUTHORIZED.
+#    WAZUH_DASHBOARD_URL, and NODE_EXTRA_CA_CERTS (path to the SOC root CA, so
+#    upstream TLS is verified rather than disabled).
 cp dashboard/.env.example dashboard/.env
 # Edit dashboard/.env with your service credentials
 

@@ -1,7 +1,7 @@
 <script lang="ts">
-  import ServiceDetailLayout from '$lib/components/ServiceDetailLayout.svelte';
-  import StatBox from '$lib/components/StatBox.svelte';
-  import { publicUrls, LOADING_PLACEHOLDER } from '$lib/config';
+import ServiceDetailLayout from '$lib/components/ServiceDetailLayout.svelte';
+import StatBox from '$lib/components/StatBox.svelte';
+import { LOADING_PLACEHOLDER, publicUrls } from '$lib/config';
 </script>
 
 <ServiceDetailLayout
@@ -14,19 +14,26 @@
   connectingLabel="Connecting to OpenCTI..."
 >
   {#snippet children(data)}
+    <!--
+      Distinguish genuine zeros from "no data yet" (finding 22/59). Without a token the
+      server returns only `status`/`note` (count fields undefined) — those render as muted
+      placeholders rather than a misleading `0`. A real 0 (token configured, empty graph)
+      still renders as a normal zero.
+    -->
     <div class="stats-row">
       <StatBox label="Status" value={String(data.status ?? 'unknown')} color="green" />
-      <StatBox label="Version" value={String(data.version ?? LOADING_PLACEHOLDER)} />
-      <StatBox label="Indicators" value={Number(data.indicators ?? 0)} color="accent" />
-      <StatBox label="Observables" value={Number(data.observables ?? 0)} color="accent" />
-      <StatBox label="Reports" value={Number(data.reports ?? 0)} />
-      <StatBox label="Malwares" value={Number(data.malwares ?? 0)} />
+      <StatBox label="Version" value={String(data.version ?? LOADING_PLACEHOLDER)} empty={data.version === undefined} />
+      <StatBox label="Indicators" value={Number(data.indicators ?? 0)} color="accent" empty={data.indicators === undefined} />
+      <StatBox label="Observables" value={Number(data.observables ?? 0)} color="accent" empty={data.observables === undefined} />
+      <StatBox label="Reports" value={Number(data.reports ?? 0)} empty={data.reports === undefined} />
+      <StatBox label="Malwares" value={Number(data.malwares ?? 0)} empty={data.malwares === undefined} />
       <StatBox
         label="Connectors"
         value={`${Number(data.activeConnectors ?? 0)}/${Number(data.connectors ?? 0)}`}
         color="green"
+        empty={data.connectors === undefined}
       />
-      <StatBox label="Threat Actors" value={Number(data.threatActors ?? 0)} />
+      <StatBox label="Threat Actors" value={Number(data.threatActors ?? 0)} empty={data.threatActors === undefined} />
     </div>
 
     {#if data.note}

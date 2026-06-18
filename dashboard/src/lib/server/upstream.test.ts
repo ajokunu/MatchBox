@@ -1,9 +1,9 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Mock SvelteKit's env so the module under test can import `$env/dynamic/private`.
 vi.mock('$env/dynamic/private', () => ({ env: {} }));
 
-import { upstreamFetch, upstreamJson, upstreamErrorResponse, UpstreamError } from './upstream';
+import { UpstreamError, upstreamErrorResponse, upstreamFetch, upstreamJson } from './upstream';
 
 describe('upstreamFetch', () => {
   beforeEach(() => {
@@ -31,7 +31,9 @@ describe('upstreamFetch', () => {
 
   it('maps a network error to a generic "upstream unreachable"', async () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('ECONNREFUSED 10.0.0.5:55000')));
-    await expect(upstreamFetch('https://example.test/down')).rejects.toThrow(/upstream unreachable/);
+    await expect(upstreamFetch('https://example.test/down')).rejects.toThrow(
+      /upstream unreachable/,
+    );
     // The internal IP:port must not surface.
     await expect(upstreamFetch('https://example.test/down')).rejects.not.toThrow(/10\.0\.0\.5/);
   });

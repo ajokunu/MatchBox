@@ -56,6 +56,15 @@ spec:
             # group assignment is silently dropped. Created by the deploy flow.
             - name: WAZUH_AGENT_GROUP
               value: "k8s-nodes"
+            # WAVE-2 password-based enrollment (finding 3): the agent presents this
+            # shared registration password to authd (use_password=yes on the manager).
+            # Sourced from soc-wazuh-secrets/registration-password — the same value the
+            # manager seeds into /var/ossec/etc/authd.pass. Fail closed if absent.
+            - name: WAZUH_REGISTRATION_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: soc-wazuh-secrets
+                  key: registration-password
           # Mount only the specific host directories Wazuh FIM inspects and the logs
           # the collector reads — read-only. Narrowed from a full host-root ('/') bind
           # mount to shrink blast radius if the agent image is compromised. These match

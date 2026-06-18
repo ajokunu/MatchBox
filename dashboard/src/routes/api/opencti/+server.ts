@@ -1,7 +1,7 @@
+import { env } from '$env/dynamic/private';
+import { upstreamErrorResponse, upstreamFetch, upstreamJson } from '$lib/server/upstream';
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { env } from '$env/dynamic/private';
-import { upstreamFetch, upstreamJson, upstreamErrorResponse } from '$lib/server/upstream';
 
 const OPENCTI_URL = env.OPENCTI_URL || 'http://localhost:4000';
 const OPENCTI_TOKEN = env.OPENCTI_TOKEN || '';
@@ -11,9 +11,9 @@ async function graphql(query: string): Promise<Record<string, unknown>> {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${OPENCTI_TOKEN}`,
-      'Content-Type': 'application/json'
+      'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ query })
+    body: JSON.stringify({ query }),
   });
   const result = await upstreamJson<{ data?: Record<string, unknown>; errors?: unknown[] }>(resp);
   if (result.errors) throw new Error('GraphQL error');
@@ -61,7 +61,7 @@ export const GET: RequestHandler = async () => {
       threatActors: count(data.threatActorsIndividual),
       connectors: connectors.length,
       activeConnectors: connectors.filter((c) => c.active).length,
-      status: 'online'
+      status: 'online',
     });
   } catch (err) {
     return upstreamErrorResponse(err);

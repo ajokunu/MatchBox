@@ -1,5 +1,5 @@
 import { env } from '$env/dynamic/public';
-import { Shield, ChartColumn, Radar, ShieldAlert, Brain } from 'lucide-svelte';
+import { Brain, ChartColumn, Radar, Shield, ShieldAlert } from 'lucide-svelte';
 
 export interface ServiceConfig {
   id: string;
@@ -23,12 +23,23 @@ export const iconMap: Record<string, typeof Shield> = {
   ChartColumn,
   Radar,
   ShieldAlert,
-  Brain
+  Brain,
 };
 
 /** Shared placeholders so the "not loaded yet" representation is consistent everywhere. */
 export const LOADING_PLACEHOLDER = '...';
 export const CHECKING_STATUS = 'checking';
+
+/**
+ * Maps a detail page's `/api/<id>` endpoint to its key in the shared metricsStore. Today the
+ * endpoint id and store key are identical, but routing through this map means a future rename
+ * (or an endpoint that aggregates into a different store key) is a one-line change here and the
+ * detail layout keeps reading from the single global poller instead of double-fetching.
+ */
+export function storeKeyForEndpoint(endpoint: string): string {
+  const id = endpoint.replace(/^\/api\//, '').replace(/\/.*$/, '');
+  return id;
+}
 
 /**
  * Public, client-exposed base URLs. These are read in the BROWSER (iframe srcs +
@@ -40,7 +51,7 @@ export const publicUrls = {
   grafana: env.PUBLIC_GRAFANA_URL || 'http://localhost:3000',
   opencti: env.PUBLIC_OPENCTI_URL || 'http://localhost:4000',
   thehive: env.PUBLIC_THEHIVE_URL || 'http://localhost:9000',
-  cortex: env.PUBLIC_CORTEX_URL || 'http://localhost:9001'
+  cortex: env.PUBLIC_CORTEX_URL || 'http://localhost:9001',
 };
 
 export const services: ServiceConfig[] = [
@@ -54,7 +65,7 @@ export const services: ServiceConfig[] = [
     // Derived from PUBLIC_* env so a host/port change happens in one place (was hardcoded).
     dashboardUrl: publicUrls.wazuhDashboard,
     embeddable: false,
-    port: 5601
+    port: 5601,
   },
   {
     id: 'grafana',
@@ -65,7 +76,7 @@ export const services: ServiceConfig[] = [
     icon: 'ChartColumn',
     dashboardUrl: publicUrls.grafana,
     embeddable: true,
-    port: 3000
+    port: 3000,
   },
   {
     id: 'opencti',
@@ -76,7 +87,7 @@ export const services: ServiceConfig[] = [
     icon: 'Radar',
     dashboardUrl: publicUrls.opencti,
     embeddable: false,
-    port: 4000
+    port: 4000,
   },
   {
     id: 'thehive',
@@ -87,7 +98,7 @@ export const services: ServiceConfig[] = [
     icon: 'ShieldAlert',
     dashboardUrl: publicUrls.thehive,
     embeddable: true,
-    port: 9000
+    port: 9000,
   },
   {
     id: 'cortex',
@@ -98,13 +109,19 @@ export const services: ServiceConfig[] = [
     icon: 'Brain',
     dashboardUrl: publicUrls.cortex,
     embeddable: false,
-    port: 9001
-  }
+    port: 9001,
+  },
 ];
 
 export const grafanaDashboards = [
   { label: 'Wazuh SOC', path: '/d/wazuh-soc-overview/wazuh-soc-overview?orgId=1&kiosk' },
-  { label: 'K8s Cluster', path: '/d/efa86fd1d0c121a26444b636a3f509a8/kubernetes-compute-resources-cluster?orgId=1&kiosk' },
-  { label: 'Node Exporter', path: '/d/7d57716318ee0dddbac5a7f451fb7753/node-exporter-nodes?orgId=1&kiosk' },
-  { label: 'CoreDNS', path: '/d/vkQ0UHxik/coredns?orgId=1&kiosk' }
+  {
+    label: 'K8s Cluster',
+    path: '/d/efa86fd1d0c121a26444b636a3f509a8/kubernetes-compute-resources-cluster?orgId=1&kiosk',
+  },
+  {
+    label: 'Node Exporter',
+    path: '/d/7d57716318ee0dddbac5a7f451fb7753/node-exporter-nodes?orgId=1&kiosk',
+  },
+  { label: 'CoreDNS', path: '/d/vkQ0UHxik/coredns?orgId=1&kiosk' },
 ];

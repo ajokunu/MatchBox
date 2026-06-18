@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { env } from '$env/dynamic/private';
 /**
  * Shared server-side upstream-fetch helper.
  *
@@ -14,8 +16,6 @@
  * for all five routes at once.
  */
 import { json } from '@sveltejs/kit';
-import { readFileSync } from 'node:fs';
-import { env } from '$env/dynamic/private';
 
 const DEFAULT_TIMEOUT_MS = 10_000;
 
@@ -81,7 +81,7 @@ export async function upstreamFetch(url: string, opts: UpstreamOptions = {}): Pr
       ...init,
       signal: init.signal ?? AbortSignal.timeout(timeoutMs),
       // `dispatcher` is an undici extension to RequestInit; harmless when undefined.
-      ...(dispatcher ? { dispatcher } : {})
+      ...(dispatcher ? { dispatcher } : {}),
     } as RequestInit);
   } catch (err) {
     // Log the detailed cause server-side; surface nothing internal to the client.

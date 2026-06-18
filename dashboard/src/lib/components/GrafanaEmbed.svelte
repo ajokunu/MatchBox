@@ -1,58 +1,63 @@
 <script lang="ts">
-  import { LoaderCircle, ExternalLink, RefreshCw } from 'lucide-svelte';
-  import { grafanaDashboards, publicUrls } from '$lib/config';
-  import { themeStore } from '$lib/stores';
+import { grafanaDashboards, publicUrls } from '$lib/config';
+import { themeStore } from '$lib/stores';
+import { ExternalLink, LoaderCircle, RefreshCw } from 'lucide-svelte';
 
-  let { height = '100%' }: { height?: string } = $props();
+let { height = '100%' }: { height?: string } = $props();
 
-  // Grafana base URL comes from PUBLIC_GRAFANA_URL (was hardcoded http://localhost:3000,
-  // which broke embeds/links for anyone not browsing from the host machine).
-  const grafanaBase = publicUrls.grafana;
+// Grafana base URL comes from PUBLIC_GRAFANA_URL (was hardcoded http://localhost:3000,
+// which broke embeds/links for anyone not browsing from the host machine).
+const grafanaBase = publicUrls.grafana;
 
-  let activeTab = $state(0);
-  let loading = $state(true);
-  let reloading = $state(false);
+let activeTab = $state(0);
+let loading = $state(true);
+let reloading = $state(false);
 
-  // Build Grafana URL with theme param synced to dashboard theme.
-  function buildSrc(index: number, theme: string): string {
-    if (index < 0 || index >= grafanaDashboards.length) return '';
-    const grafanaTheme = theme === 'dark' ? 'dark' : 'light';
-    return `${grafanaBase}${grafanaDashboards[index].path}&theme=${grafanaTheme}`;
+// Build Grafana URL with theme param synced to dashboard theme.
+function buildSrc(index: number, theme: string): string {
+  if (index < 0 || index >= grafanaDashboards.length) return '';
+  const grafanaTheme = theme === 'dark' ? 'dark' : 'light';
+  return `${grafanaBase}${grafanaDashboards[index].path}&theme=${grafanaTheme}`;
+}
+
+let iframeSrc = $derived(buildSrc(activeTab, $themeStore));
+let externalHref = $derived(
+  activeTab >= 0 && activeTab < grafanaDashboards.length
+    ? `${grafanaBase}${grafanaDashboards[activeTab].path.replace('&kiosk', '')}`
+    : '#',
+);
+
+function switchDash(index: number) {
+  activeTab = index;
+  loading = true;
+}
+
+let loadError = $state(false);
+
+function reload() {
+  loading = true;
+  loadError = false;
+  reloading = true;
+  setTimeout(() => {
+    reloading = false;
+  }, 50);
+}
+
+// NOTE: the Grafana iframe is cross-origin, so JS cannot inspect its content or
+// reliably detect an HTTP error / login-redirect inside it — `onload` fires even for
+// error pages. The 10s timeout below is therefore a best-effort fallback only; a
+// slow-but-healthy Grafana may briefly show the error overlay before loading.
+$effect(() => {
+  if (loading && !reloading) {
+    const timer = setTimeout(() => {
+      if (loading) {
+        loadError = true;
+        loading = false;
+      }
+    }, 10_000);
+    return () => clearTimeout(timer);
   }
-
-  let iframeSrc = $derived(buildSrc(activeTab, $themeStore));
-  let externalHref = $derived(
-    activeTab >= 0 && activeTab < grafanaDashboards.length
-      ? `${grafanaBase}${grafanaDashboards[activeTab].path.replace('&kiosk', '')}`
-      : '#'
-  );
-
-  function switchDash(index: number) {
-    activeTab = index;
-    loading = true;
-  }
-
-  let loadError = $state(false);
-
-  function reload() {
-    loading = true;
-    loadError = false;
-    reloading = true;
-    setTimeout(() => { reloading = false; }, 50);
-  }
-
-  // NOTE: the Grafana iframe is cross-origin, so JS cannot inspect its content or
-  // reliably detect an HTTP error / login-redirect inside it — `onload` fires even for
-  // error pages. The 10s timeout below is therefore a best-effort fallback only; a
-  // slow-but-healthy Grafana may briefly show the error overlay before loading.
-  $effect(() => {
-    if (loading && !reloading) {
-      const timer = setTimeout(() => {
-        if (loading) { loadError = true; loading = false; }
-      }, 10_000);
-      return () => clearTimeout(timer);
-    }
-  });
+});
 </script>
 
 <div class="grafana-embed" style="height: {height}">

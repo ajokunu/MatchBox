@@ -6,7 +6,23 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 
+# --- VM profile selection ------------------------------------------------------
+# By default we provision the full SOC VM (10GiB / 4 CPU). Set MINIMAL=1 (or
+# CONFIG=minimal) to provision the slim Wazuh-only profile (6GiB / 2 CPU) from
+# lima/k3s-soc-minimal.yaml — useful on tighter hardware or for the minimal deploy
+# path. The VM NAME stays `k3s-soc` either way so every other script's kubeconfig
+# resolution (limactl list k3s-soc ...) keeps working unchanged.
+LIMA_CONFIG="$PROJECT_DIR/lima/k3s-soc.yaml"
+VM_PROFILE="full (10GiB / 4 CPU)"
+case "${CONFIG:-}${MINIMAL:+minimal}" in
+  minimal|MINIMAL)
+    LIMA_CONFIG="$PROJECT_DIR/lima/k3s-soc-minimal.yaml"
+    VM_PROFILE="minimal (6GiB / 2 CPU)"
+    ;;
+esac
+
 echo "=== MatchBox — Lima VM Setup ==="
+echo "  Profile: $VM_PROFILE  (config: $LIMA_CONFIG)"
 
 # Ensure Homebrew is in PATH (common issue on Apple Silicon)
 if [ -f /opt/homebrew/bin/brew ]; then
@@ -48,10 +64,10 @@ if limactl list --format '{{.Name}}' 2>/dev/null | grep -q "^k3s-soc$"; then
     limactl start k3s-soc
   fi
 else
-  # Create and start Lima VM
-  echo "[2/5] Creating Lima VM (10GB RAM, 4 CPUs, 120GB disk)..."
+  # Create and start Lima VM (profile selected above; name is always k3s-soc).
+  echo "[2/5] Creating Lima VM — $VM_PROFILE..."
   echo "  This will take a few minutes on first boot..."
-  limactl start "$PROJECT_DIR/lima/k3s-soc.yaml" --name k3s-soc
+  limactl start "$LIMA_CONFIG" --name k3s-soc
 fi
 
 # Configure kubeconfig

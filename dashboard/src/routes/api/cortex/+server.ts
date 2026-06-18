@@ -1,7 +1,7 @@
+import { env } from '$env/dynamic/private';
+import { upstreamErrorResponse, upstreamFetch, upstreamJson } from '$lib/server/upstream';
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { env } from '$env/dynamic/private';
-import { upstreamFetch, upstreamJson, upstreamErrorResponse } from '$lib/server/upstream';
 
 const CORTEX_URL = env.CORTEX_URL || 'http://localhost:9001';
 const CORTEX_API_KEY = env.CORTEX_API_KEY || '';
@@ -19,21 +19,23 @@ export const GET: RequestHandler = async () => {
       try {
         const analyzerResp = await upstreamFetch(`${CORTEX_URL}/api/analyzer`, {
           headers: { Authorization: `Bearer ${CORTEX_API_KEY}` },
-          timeoutMs: 5000
+          timeoutMs: 5000,
         });
         const analyzers = await upstreamJson<unknown[]>(analyzerResp);
         if (Array.isArray(analyzers)) {
           analyzerCount = analyzers.length;
           configured = true;
         }
-      } catch { /* Cortex not yet configured — safe to ignore */ }
+      } catch {
+        /* Cortex not yet configured — safe to ignore */
+      }
     }
 
     return json({
       version: status.versions?.Cortex || 'unknown',
       analyzers: analyzerCount,
       configured,
-      status: 'online'
+      status: 'online',
     });
   } catch (err) {
     return upstreamErrorResponse(err);

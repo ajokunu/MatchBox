@@ -1,3 +1,5 @@
+import { dev } from '$app/environment';
+import { env } from '$env/dynamic/private';
 /**
  * Server hooks — enforce auth + same-origin on the /api/* SOC proxy.
  *
@@ -16,8 +18,6 @@
  */
 import type { Handle } from '@sveltejs/kit';
 import { json } from '@sveltejs/kit';
-import { env } from '$env/dynamic/private';
-import { dev } from '$app/environment';
 
 function timingSafeEqual(a: string, b: string): boolean {
   // Constant-time-ish compare to avoid leaking token length/prefix via timing.

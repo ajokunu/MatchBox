@@ -1,7 +1,7 @@
 <script lang="ts">
-  import ServiceDetailLayout from '$lib/components/ServiceDetailLayout.svelte';
-  import StatBox from '$lib/components/StatBox.svelte';
-  import { publicUrls, LOADING_PLACEHOLDER } from '$lib/config';
+import ServiceDetailLayout from '$lib/components/ServiceDetailLayout.svelte';
+import StatBox from '$lib/components/StatBox.svelte';
+import { LOADING_PLACEHOLDER, publicUrls } from '$lib/config';
 </script>
 
 <ServiceDetailLayout
@@ -14,11 +14,19 @@
   connectingLabel="Connecting to TheHive..."
 >
   {#snippet children(data)}
+    <!--
+      Distinguish a genuine zero from "no data yet" (finding 22/59). When the server omits
+      the count fields entirely (no API key → only `status`/`note` returned), the metric was
+      never populated, so render the muted empty placeholder instead of a misleading `0`.
+      When the field IS present (key configured), a real 0 renders as a normal zero.
+    -->
+    {@const hasCaseMetrics = data.openCases !== undefined}
+    {@const hasAlertMetrics = data.alerts !== undefined}
     <div class="stats-row">
       <StatBox label="Status" value={String(data.status ?? 'unknown')} color="green" />
-      <StatBox label="Version" value={String(data.version ?? LOADING_PLACEHOLDER)} />
-      <StatBox label="Open Cases" value={Number(data.openCases ?? 0)} color="accent" />
-      <StatBox label="Alerts" value={Number(data.alerts ?? 0)} color="accent" />
+      <StatBox label="Version" value={String(data.version ?? LOADING_PLACEHOLDER)} empty={data.version === undefined} />
+      <StatBox label="Open Cases" value={Number(data.openCases ?? 0)} color="accent" empty={!hasCaseMetrics} />
+      <StatBox label="Alerts" value={Number(data.alerts ?? 0)} color="accent" empty={!hasAlertMetrics} />
     </div>
 
     {#if data.note}

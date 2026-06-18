@@ -1,8 +1,11 @@
 {
   "name": "@matchbox/wazuh-mcp",
-  "version": "1.6.0",
+  "version": "1.7.0",
   "description": "MCP server for Wazuh — query alerts/vulnerabilities (indexer) and agents/rules/decoders (Server API) from Claude Code",
   "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc",

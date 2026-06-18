@@ -1,5 +1,9 @@
-import { healthStore, metricsStore } from './stores';
-import type { HealthState, MetricsState } from './stores';
+import { healthStore, metricsStatusStore, metricsStore } from './stores';
+import type { FetchStatus, HealthState, MetricsState } from './stores';
+
+function setMetricsStatus(serviceId: string, status: FetchStatus): void {
+  metricsStatusStore.update((s) => ({ ...s, [serviceId]: status }));
+}
 
 export async function fetchHealth(): Promise<boolean> {
   try {
@@ -17,17 +21,25 @@ export async function fetchHealth(): Promise<boolean> {
   }
 }
 
-export async function fetchMetrics(serviceId: string): Promise<void> {
+// Returns true on success so callers (and the page-driven manual refresh) can react to the
+// outcome, and writes the per-service fetch status so detail pages can render loading/error
+// states while this single poller owns the actual fetching.
+export async function fetchMetrics(serviceId: string): Promise<boolean> {
   try {
     const resp = await fetch(`/api/${serviceId}`);
     if (!resp.ok) {
       console.warn(`[MatchBox] ${serviceId} metrics fetch failed:`, resp.status);
-      return;
+      setMetricsStatus(serviceId, 'error');
+      return false;
     }
     const data: MetricsState = await resp.json();
     metricsStore.update((m) => ({ ...m, [serviceId]: data }));
+    setMetricsStatus(serviceId, 'ok');
+    return true;
   } catch (err) {
     console.warn(`[MatchBox] ${serviceId} metrics error:`, err);
+    setMetricsStatus(serviceId, 'error');
+    return false;
   }
 }
 
@@ -37,7 +49,7 @@ export async function fetchAllMetrics(): Promise<void> {
     fetchMetrics('grafana'),
     fetchMetrics('opencti'),
     fetchMetrics('thehive'),
-    fetchMetrics('cortex')
+    fetchMetrics('cortex'),
   ]);
 }
 
@@ -51,9 +63,9 @@ export async function fetchAllMetrics(): Promise<void> {
  * delay and overlapping in-flight requests can't pile up.
  */
 function makePoller(
-  task: () => Promise<boolean | void>,
+  task: () => Promise<boolean | undefined>,
   baseMs: number,
-  maxMs: number
+  maxMs: number,
 ): () => void {
   let timer: ReturnType<typeof setTimeout> | undefined;
   let delay = baseMs;

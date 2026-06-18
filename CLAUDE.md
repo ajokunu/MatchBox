@@ -25,7 +25,7 @@ authoritative in `docs/VERSIONS.md` / `docs/resource-requirements.md`):
 - OpenSearch security enabled with internal user auth
 - TLS 1.2+ on Traefik IngressRoutes with ECDHE cipher suites (self-signed cert: `soc-tls-cert`)
 - TLS PKI via `scripts/generate-certs.sh` (openssl, 0 RAM) — cert-manager is NOT used (documented optional upgrade only)
-- NetworkPolicies: 32 total = 5 default-deny-ingress + 5 default-deny-egress + 22 explicit allow, across 5 namespaces (see `docs/VERSIONS.md`)
+- NetworkPolicies: 34 total = 5 default-deny-ingress + 5 default-deny-egress + 24 explicit allow, across 5 namespaces (see `docs/VERSIONS.md`)
 - Redis auth enabled, NFS root_squash, Cortex RBAC with PVC verbs
 - All container images pinned (no `:latest` tags)
 - MCP servers: 10s request timeouts, 50KB response truncation, `[WRITE]` annotations on mutations

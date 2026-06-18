@@ -1,0 +1,71 @@
+# Wazuh Manager Filebeat configuration (filebeat.yml)
+#
+# WAVE-2 HARDENING (Filebeat CA): the wazuh-manager image regenerates
+# /etc/filebeat/filebeat.yml from its env template on every boot and does NOT wire
+# ssl.certificate_authorities, which forced FILEBEAT_SSL_VERIFICATION_MODE=none
+# (no cert verification on the manager Filebeat -> shared OpenSearch hop).
+#
+# We now mount THIS managed filebeat.yml over the generated one (subPath at
+# /etc/filebeat/filebeat.yml in the manager container). Because the mount overrides
+# the env-regenerated file, we can set ssl.verification_mode: certificate and trust
+# the SOC root CA, restoring TLS verification on the alert-indexing path.
+#
+# The output password is interpolated from ${INDEXER_PASSWORD} — Filebeat expands
+# env vars in its config, and the manager container already exports INDEXER_PASSWORD
+# from soc-wazuh-secrets/indexer-password. We deliberately do NOT bake the password
+# into this ConfigMap (it is not a Secret).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: wazuh-filebeat-config
+  namespace: wazuh
+  labels:
+    app.kubernetes.io/name: wazuh-manager
+    app.kubernetes.io/component: filebeat-config
+    app.kubernetes.io/part-of: matchbox-soc
+data:
+  filebeat.yml: |
+    # Read the Wazuh alerts the manager writes to disk and ship them to OpenSearch.
+    # Mirrors the wazuh-manager image's bundled module so alert indexing keeps working.
+    filebeat.modules:
+      - module: wazuh
+        alerts:
+          enabled: true
+        archives:
+          enabled: false
+
+    setup.template.json.enabled: true
+    setup.template.json.path: '/etc/filebeat/wazuh-template.json'
+    setup.template.json.name: 'wazuh'
+    setup.ilm.enabled: false
+    setup.template.overwrite: true
+
+    output.elasticsearch:
+      hosts:
+        - 'https://opensearch-cluster-master.shared.svc.cluster.local:9200'
+      # Admin user; password expanded from the container's INDEXER_PASSWORD env
+      # (sourced from soc-wazuh-secrets/indexer-password). Not stored in this ConfigMap.
+      username: 'admin'
+      password: '${INDEXER_PASSWORD}'
+      protocol: https
+      ssl:
+        # WAVE-2: verify the OpenSearch server cert against the SOC root CA instead of
+        # disabling verification. 'certificate' validates the cert chain + expiry but
+        # not the hostname (the cert SANs cover the cluster service name; this avoids
+        # churn if the manager reaches the indexer via a non-SAN address).
+        verification_mode: 'certificate'
+        certificate_authorities:
+          - '/etc/ssl/opensearch/root-ca.pem'
+
+    # Report ES 7.10.2 to the Wazuh-bundled Filebeat (7.10.2) so it does NOT emit the
+    # removed `_type` bulk field against OpenSearch. Pairs with the indexer-side
+    # compatibility.override_main_response_version in opensearch.yaml.
+    compatibility.override_main_response_version: true
+
+    logging.level: info
+    logging.to_files: true
+    logging.files:
+      path: /var/log/filebeat
+      name: filebeat
+      keepfiles: 7
+      permissions: 0644

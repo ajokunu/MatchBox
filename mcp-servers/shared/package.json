@@ -1,8 +1,11 @@
 {
   "name": "@matchbox/mcp-shared",
-  "version": "1.6.0",
+  "version": "1.7.0",
   "description": "Shared utilities for MatchBox MCP servers — fetchWithRetry, formatResponse, safeId, structured logging, startServer",
   "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": {
@@ -11,9 +14,7 @@
       "default": "./dist/index.js"
     }
   },
-  "files": [
-    "dist"
-  ],
+  "files": ["dist"],
   "scripts": {
     "build": "tsc",
     "dev": "tsx src/index.ts",

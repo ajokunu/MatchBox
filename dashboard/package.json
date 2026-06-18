@@ -1,6 +1,6 @@
 {
   "name": "@matchbox/soc-command-center",
-  "version": "1.6.0",
+  "version": "1.7.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -11,10 +11,14 @@
     "test": "vitest run",
     "test:watch": "vitest"
   },
+  "engines": {
+    "node": ">=20"
+  },
   "dependencies": {
     "@sveltejs/adapter-node": "^5.2.0",
     "lucide-svelte": "^0.469.0",
-    "undici": "^6.21.0"
+    "undici": "^6.21.0",
+    "zod": "^3.22.0"
   },
   "devDependencies": {
     "@sveltejs/kit": "^2.15.0",

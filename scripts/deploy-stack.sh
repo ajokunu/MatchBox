@@ -1,7 +1,7 @@
 #!/bin/bash
 # Deploy the full MatchBox SOC stack to k3s.
 # Usage: ./scripts/deploy-stack.sh [component]
-#   component: all | namespaces | secrets | certs | shared | wazuh | thehive | opencti | monitoring | ingress
+#   component: all | namespaces | secrets | certs | shared | opensearch-users | wazuh | thehive | opencti | monitoring | ingress
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -175,6 +175,13 @@ deploy_shared() {
     echo "  Inspect: kubectl get pods -n shared; kubectl logs -n shared -l app=opensearch"
     exit 1
   fi
+
+  # Apply the REAL admin password to the security config now that OpenSearch is
+  # ready and soc-shared-secrets exists. Must run BEFORE Wazuh (its manager/indexer
+  # auth uses this password). setup-opensearch-users.sh fails closed if the cluster
+  # or the source Secret is missing (pipefail propagates the error here).
+  echo "  Applying OpenSearch admin password (custom internal_users.yml)..."
+  "$SCRIPT_DIR/setup-opensearch-users.sh"
 
   # Apply index retention (ISM) policies now that OpenSearch is ready. setup-ism.sh
   # exits non-zero on any policy failure (pipefail propagates the error here).
@@ -410,13 +417,16 @@ case "$COMPONENT" in
   secrets) deploy_secrets ;;
   certs) deploy_certs ;;
   shared) setup_helm_repos && deploy_shared ;;
+  # Stand-alone re-apply of the OpenSearch admin password (e.g. after rotating
+  # soc-shared-secrets/opensearch-password without redeploying all of shared).
+  opensearch-users) "$SCRIPT_DIR/setup-opensearch-users.sh" ;;
   wazuh) deploy_wazuh ;;
   thehive) setup_helm_repos && deploy_thehive ;;
   opencti) setup_helm_repos && deploy_opencti ;;
   monitoring) setup_helm_repos && deploy_monitoring ;;
   ingress) setup_helm_repos && deploy_ingress ;;
   *)
-    echo "Usage: $0 [all|namespaces|secrets|certs|shared|wazuh|thehive|opencti|monitoring|ingress]"
+    echo "Usage: $0 [all|namespaces|secrets|certs|shared|opensearch-users|wazuh|thehive|opencti|monitoring|ingress]"
     exit 1
     ;;
 esac

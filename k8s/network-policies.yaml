@@ -589,11 +589,15 @@ spec:
     - Egress
 
 ---
-# Wazuh: Allow DNS + shared namespace (OpenSearch 9200)
+# Wazuh egress — WAVE-2 (finding 33): split namespace-wide egress into per-app rules so
+# each workload reaches only what it needs (state-of-the-art least-privilege egress),
+# instead of one podSelector:{} block giving the dashboard the same egress as the manager.
+#
+# (a) DNS for EVERY pod in the namespace (kept broad — all workloads resolve names).
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: allow-egress-wazuh
+  name: allow-egress-wazuh-dns
   namespace: wazuh
 spec:
   podSelector: {}
@@ -610,10 +614,51 @@ spec:
           port: 53
         - protocol: TCP
           port: 53
-    # Pod-to-pod within wazuh namespace
+    # Pod-to-pod within wazuh namespace (manager<->agents, dashboard->manager API).
     - to:
         - podSelector: {}
-    # OpenSearch in shared namespace
+
+---
+# (b) Manager-only egress: the manager ships alerts to the shared OpenSearch (9200).
+# The dashboard does NOT need to reach OpenSearch directly, so this is scoped to the
+# manager pod by app label.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-egress-wazuh-manager
+  namespace: wazuh
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: wazuh-manager
+  policyTypes:
+    - Egress
+  egress:
+    # OpenSearch in shared namespace (alert indexing).
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: shared
+      ports:
+        - protocol: TCP
+          port: 9200
+
+---
+# (c) Dashboard-only egress: the Wazuh dashboard queries the shared OpenSearch (9200)
+# for alert data. Scoped to the dashboard pod by app label.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-egress-wazuh-dashboard
+  namespace: wazuh
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: wazuh-dashboard
+  policyTypes:
+    - Egress
+  egress:
+    # OpenSearch in shared namespace (dashboard reads wazuh-alerts-* indices).
     - to:
         - namespaceSelector:
             matchLabels:

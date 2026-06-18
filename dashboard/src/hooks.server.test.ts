@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 // Token is configured → auth is enforced. dev=false so missing token also fails closed.
 vi.mock('$env/dynamic/private', () => ({ env: { SOC_API_TOKEN: 'sekret-token' } }));
@@ -31,7 +31,7 @@ describe('hooks /api/* auth', () => {
   it('rejects /api/* with the wrong token (401)', async () => {
     const resp = await handle({
       event: makeEvent('/api/wazuh', { authorization: 'Bearer nope' }),
-      resolve
+      resolve,
     });
     expect(resp.status).toBe(401);
   });
@@ -39,7 +39,7 @@ describe('hooks /api/* auth', () => {
   it('allows /api/* with the correct bearer token', async () => {
     const resp = await handle({
       event: makeEvent('/api/wazuh', { authorization: 'Bearer sekret-token' }),
-      resolve
+      resolve,
     });
     expect(resp.status).toBe(200);
   });
@@ -48,9 +48,9 @@ describe('hooks /api/* auth', () => {
     const resp = await handle({
       event: makeEvent('/api/wazuh', {
         origin: 'http://evil.example',
-        authorization: 'Bearer sekret-token'
+        authorization: 'Bearer sekret-token',
       }),
-      resolve
+      resolve,
     });
     expect(resp.status).toBe(403);
   });
@@ -58,7 +58,7 @@ describe('hooks /api/* auth', () => {
   it('accepts the token via the soc_api cookie', async () => {
     const resp = await handle({
       event: makeEvent('/api/wazuh', { cookie: 'soc_api=sekret-token' }),
-      resolve
+      resolve,
     });
     expect(resp.status).toBe(200);
   });

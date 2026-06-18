@@ -1,34 +1,34 @@
 <script lang="ts">
-  import { Shield, TriangleAlert, Users, CircleCheck, CircleX } from 'lucide-svelte';
-  import ServiceDetailLayout from '$lib/components/ServiceDetailLayout.svelte';
-  import StatBox from '$lib/components/StatBox.svelte';
-  import { publicUrls, LOADING_PLACEHOLDER } from '$lib/config';
+import ServiceDetailLayout from '$lib/components/ServiceDetailLayout.svelte';
+import StatBox from '$lib/components/StatBox.svelte';
+import { LOADING_PLACEHOLDER, publicUrls } from '$lib/config';
+import { CircleCheck, CircleX, Shield, TriangleAlert, Users } from 'lucide-svelte';
 
-  interface Agent {
-    id: string;
-    name: string;
-    status: string;
-    os: string;
-    ip: string;
-    version: string;
-    registered: string;
-  }
+interface Agent {
+  id: string;
+  name: string;
+  status: string;
+  os: string;
+  ip: string;
+  version: string;
+  registered: string;
+}
 
-  interface ScaPolicy {
-    name: string;
-    score: number;
-    pass: number;
-    fail: number;
-    invalid: number;
-    notApplicable: number;
-    total: number;
-    policyId: string;
-  }
+interface ScaPolicy {
+  name: string;
+  score: number;
+  pass: number;
+  fail: number;
+  invalid: number;
+  notApplicable: number;
+  total: number;
+  policyId: string;
+}
 
-  // External link host/port now come from PUBLIC_* config (were hardcoded localhost).
-  const wazuhAppUrl = `${publicUrls.wazuhDashboard}/app/wazuh`;
-  // Display-only host strings derived from config (was hardcoded "localhost:5601"/":55000").
-  const dashboardHost = publicUrls.wazuhDashboard.replace(/^https?:\/\//, '');
+// External link host/port now come from PUBLIC_* config (were hardcoded localhost).
+const wazuhAppUrl = `${publicUrls.wazuhDashboard}/app/wazuh`;
+// Display-only host strings derived from config (was hardcoded "localhost:5601"/":55000").
+const dashboardHost = publicUrls.wazuhDashboard.replace(/^https?:\/\//, '');
 </script>
 
 <ServiceDetailLayout

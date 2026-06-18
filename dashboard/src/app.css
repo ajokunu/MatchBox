@@ -43,10 +43,14 @@
   --badge-text: #e05263;
 }
 
-* { margin: 0; padding: 0; box-sizing: border-box; }
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
 
 body {
-  font-family: 'SF Mono', 'Fira Code', 'JetBrains Mono', 'Cascadia Code', 'Menlo', monospace;
+  font-family: "SF Mono", "Fira Code", "JetBrains Mono", "Cascadia Code", "Menlo", monospace;
   background: var(--bg-primary);
   color: var(--text-primary);
   overflow: hidden;
@@ -55,13 +59,25 @@ body {
   transition: background 0.2s, color 0.2s;
 }
 
-a { color: inherit; text-decoration: none; }
+a {
+  color: inherit;
+  text-decoration: none;
+}
 
 /* Scrollbar */
-::-webkit-scrollbar { width: 6px; }
-::-webkit-scrollbar-track { background: var(--bg-secondary); }
-::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: var(--text-dim); }
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: var(--bg-secondary);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-dim);
+}
 
 /* Accent line — matchbox red */
 .scanline {
@@ -77,16 +93,27 @@ a { color: inherit; text-decoration: none; }
   z-index: 1000;
 }
 @keyframes scanline {
-  0% { top: 0; }
-  100% { top: 100vh; }
+  0% {
+    top: 0;
+  }
+  100% {
+    top: 100vh;
+  }
 }
 
 @keyframes spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 @keyframes blink {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.3; }
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
 }
 
 /* Single shared spinner rule (was redeclared in GrafanaEmbed + every service page).

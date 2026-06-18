@@ -1,8 +1,11 @@
 {
   "name": "@matchbox/opencti-mcp",
-  "version": "1.6.0",
+  "version": "1.7.0",
   "description": "MCP server for OpenCTI GraphQL API — search threat intel, observables, and attack patterns from Claude Code",
   "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc",

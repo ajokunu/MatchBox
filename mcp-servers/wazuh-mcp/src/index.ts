@@ -30,57 +30,64 @@
  *   Optional: REQUEST_TIMEOUT_MS, MAX_RESPONSE_CHARS, TOKEN_TTL_MS
  */
 
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { z } from "zod";
 import {
+  REQUEST_TIMEOUT_MS,
+  basicAuth,
   fetchWithRetry,
   formatResponse,
-  basicAuth,
   indexerSearch,
-  safeId,
   log,
-  toolGuard,
-  startServer,
   readVersion,
-  REQUEST_TIMEOUT_MS,
-} from "@matchbox/mcp-shared";
-import { buildListAlertsBody, buildGetAlertBody, buildVulnBody } from "./queries.js";
+  safeId,
+  startServer,
+  toolGuard,
+} from '@matchbox/mcp-shared';
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { z } from 'zod';
+import {
+  WAZUH_QUERY_OPERATORS,
+  buildGetAlertBody,
+  buildListAlertsBody,
+  buildVulnBody,
+} from './queries.js';
 
 // --- Server API config (agents / rules / decoders) ---
-const WAZUH_URL = process.env.WAZUH_API_URL || "https://soc.homelab.local:55000";
+const WAZUH_URL = process.env.WAZUH_API_URL || 'https://soc.homelab.local:55000';
 const WAZUH_USER = process.env.WAZUH_API_USER;
 const WAZUH_PASS = process.env.WAZUH_API_PASSWORD;
 
 // --- Indexer config (alerts / vulnerabilities) ---
-const INDEXER_URL = process.env.WAZUH_INDEXER_URL || "https://localhost:9200";
-const INDEXER_USER = process.env.WAZUH_INDEXER_USER || "admin";
+const INDEXER_URL = process.env.WAZUH_INDEXER_URL || 'https://localhost:9200';
+const INDEXER_USER = process.env.WAZUH_INDEXER_USER || 'admin';
 const INDEXER_PASS = process.env.WAZUH_INDEXER_PASSWORD;
 
 if (!WAZUH_USER || !WAZUH_PASS) {
-  console.error("FATAL: WAZUH_API_USER and WAZUH_API_PASSWORD environment variables are required");
+  console.error('FATAL: WAZUH_API_USER and WAZUH_API_PASSWORD environment variables are required');
   process.exit(1);
 }
 if (!INDEXER_PASS) {
   // Alerts/vulnerabilities tools cannot work without indexer creds; fail closed.
-  console.error("FATAL: WAZUH_INDEXER_PASSWORD environment variable is required (used by list-alerts/get-alert/get-vulnerabilities)");
+  console.error(
+    'FATAL: WAZUH_INDEXER_PASSWORD environment variable is required (used by list-alerts/get-alert/get-vulnerabilities)',
+  );
   process.exit(1);
 }
 
 const INDEXER_AUTH = basicAuth(INDEXER_USER, INDEXER_PASS);
-const ALERTS_INDEX = process.env.WAZUH_ALERTS_INDEX || "wazuh-alerts-*";
-const VULN_INDEX = process.env.WAZUH_VULN_INDEX || "wazuh-states-vulnerabilities-*";
+const ALERTS_INDEX = process.env.WAZUH_ALERTS_INDEX || 'wazuh-alerts-*';
+const VULN_INDEX = process.env.WAZUH_VULN_INDEX || 'wazuh-states-vulnerabilities-*';
 
-const TOKEN_TTL_MS = parseInt(process.env.TOKEN_TTL_MS || "850000", 10);
+const TOKEN_TTL_MS = Number.parseInt(process.env.TOKEN_TTL_MS || '850000', 10);
 let jwtToken: string | null = null;
 let tokenExpiry = 0;
 
 /** Decode a JWT's exp claim (seconds since epoch) without verifying the signature. */
 function jwtExpiryMs(token: string): number | null {
   try {
-    const payload = JSON.parse(Buffer.from(token.split(".")[1], "base64url").toString("utf8")) as {
+    const payload = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString('utf8')) as {
       exp?: number;
     };
-    return typeof payload.exp === "number" ? payload.exp * 1000 : null;
+    return typeof payload.exp === 'number' ? payload.exp * 1000 : null;
   } catch {
     return null;
   }
@@ -92,7 +99,7 @@ async function getToken(force = false): Promise<string> {
 
   // The auth endpoint is a POST; mark retryable since re-authenticating is safe.
   const resp = await fetchWithRetry(`${WAZUH_URL}/security/user/authenticate`, {
-    method: "POST",
+    method: 'POST',
     headers: { Authorization: basicAuth(WAZUH_USER!, WAZUH_PASS!) },
     retryable: true,
   });
@@ -115,7 +122,7 @@ async function wazuhApi(path: string, params: Record<string, string> = {}): Prom
     const token = await getToken();
     const url = new URL(path, WAZUH_URL);
     for (const [k, v] of Object.entries(params)) {
-      if (v !== undefined && v !== "") url.searchParams.set(k, v);
+      if (v !== undefined && v !== '') url.searchParams.set(k, v);
     }
     return fetchWithRetry(url.toString(), { headers: { Authorization: `Bearer ${token}` } });
   };
@@ -131,159 +138,175 @@ async function wazuhApi(path: string, params: Record<string, string> = {}): Prom
 }
 
 // --- MCP Server Setup ---
-const VERSION = readVersion(new URL("../package.json", import.meta.url), "1.6.0");
-const SERVER_NAME = "wazuh-mcp";
+const VERSION = readVersion(new URL('../package.json', import.meta.url), '1.6.0');
+const SERVER_NAME = 'wazuh-mcp';
 const server = new McpServer({ name: SERVER_NAME, version: VERSION });
 
 /** All Wazuh tools are read-only — establish the readOnlyHint pattern up front. */
 const READ_ONLY = { readOnlyHint: true } as const;
 
 /**
- * Conservative free-text filter: Wazuh's query grammar uses operators
- * (;,()=<>~). Strip them so an LLM-supplied string can't alter query logic.
- * (Defense-in-depth; the Server API token is single-privilege and read-only.)
+ * Free-text filter for the Wazuh Server API `search`/`group`/`name` params
+ * (finding 6). The previous filter was an over-conservative `[\w .\-/]*`
+ * allowlist that rejected legitimate searches (colons, commas, brackets in
+ * rule descriptions). Instead of an arbitrary character whitelist we model the
+ * threat directly: Wazuh's `q`/`search` query grammar is driven by a small set
+ * of structural operators — `;` `,` `(` `)` `=` `<` `>` `~` `!`. We DENY only
+ * those operators (plus control chars and backslash), and PERMIT everything
+ * else. That keeps the params injection-safe (an LLM-supplied value can no
+ * longer introduce a new clause, comparison, or grouping) while allowing the
+ * far wider charset real rule/decoder text uses.
+ *
+ * Note: `search` is a substring match, not the `q` grammar, but we apply the
+ * same denylist to all three free-text params for a single, auditable rule —
+ * defense-in-depth on top of the read-only, single-privilege Server API token.
+ * The operator denylist itself lives in queries.ts (single source of truth,
+ * unit-tested there).
  */
 const searchText = z
   .string()
   .max(256)
-  .regex(/^[\w .\-/]*$/, "Search text may only contain letters, numbers, spaces, '.', '-', '/', '_'");
+  .refine((s) => !WAZUH_QUERY_OPERATORS.test(s), {
+    message:
+      'Search text may not contain Wazuh query operators (; , ( ) = < > ~ !), backslash, or control characters',
+  });
 
 // ---------------------------------------------------------------------------
 // list-alerts  — Indexer wazuh-alerts-* / _search
 // ---------------------------------------------------------------------------
 server.tool(
-  "list-alerts",
-  "List recent Wazuh SIEM alerts with optional filtering (queries the Wazuh indexer)",
+  'list-alerts',
+  'List recent Wazuh SIEM alerts with optional filtering (queries the Wazuh indexer)',
   {
-    limit: z.number().min(1).max(100).optional().default(20).describe("Max alerts to return"),
-    level_min: z.number().min(1).max(15).optional().describe("Minimum rule level (1-15)"),
-    agent_id: safeId.optional().describe("Filter by agent ID"),
-    rule_id: safeId.optional().describe("Filter by rule ID"),
+    limit: z.number().min(1).max(100).optional().default(20).describe('Max alerts to return'),
+    level_min: z.number().min(1).max(15).optional().describe('Minimum rule level (1-15)'),
+    agent_id: safeId.optional().describe('Filter by agent ID'),
+    rule_id: safeId.optional().describe('Filter by rule ID'),
   },
   READ_ONLY,
-  toolGuard(SERVER_NAME, "list-alerts", async ({ limit, level_min, agent_id, rule_id }) => {
+  toolGuard(SERVER_NAME, 'list-alerts', async ({ limit, level_min, agent_id, rule_id }) => {
     // `!== undefined` (inside the builder) future-proofs against a min(0) relaxation.
     const body = buildListAlertsBody({ limit, level_min, agent_id, rule_id });
     const result = await indexerSearch(INDEXER_URL, ALERTS_INDEX, body, INDEXER_AUTH);
-    return { content: [{ type: "text" as const, text: formatResponse(result) }] };
-  })
+    return { content: [{ type: 'text' as const, text: formatResponse(result) }] };
+  }),
 );
 
 // ---------------------------------------------------------------------------
 // get-alert  — Indexer wazuh-alerts-* / _search by document _id
 // ---------------------------------------------------------------------------
 server.tool(
-  "get-alert",
-  "Get full details of a specific Wazuh alert by document ID (queries the Wazuh indexer)",
-  { alert_id: safeId.describe("Alert document _id to retrieve") },
+  'get-alert',
+  'Get full details of a specific Wazuh alert by document ID (queries the Wazuh indexer)',
+  { alert_id: safeId.describe('Alert document _id to retrieve') },
   READ_ONLY,
-  toolGuard(SERVER_NAME, "get-alert", async ({ alert_id }) => {
+  toolGuard(SERVER_NAME, 'get-alert', async ({ alert_id }) => {
     const body = buildGetAlertBody(alert_id);
     const result = await indexerSearch(INDEXER_URL, ALERTS_INDEX, body, INDEXER_AUTH);
-    return { content: [{ type: "text" as const, text: formatResponse(result) }] };
-  })
+    return { content: [{ type: 'text' as const, text: formatResponse(result) }] };
+  }),
 );
 
 // ---------------------------------------------------------------------------
 // search-agents  — Server API /agents
 // ---------------------------------------------------------------------------
 server.tool(
-  "search-agents",
-  "Search registered Wazuh agents by name, IP, status, or OS",
+  'search-agents',
+  'Search registered Wazuh agents by name, IP, status, or OS',
   {
-    name: searchText.optional().describe("Agent name filter"),
-    ip: z.string().max(45).optional().describe("Agent IP filter"),
-    status: z.enum(["active", "disconnected", "pending", "never_connected"]).optional(),
+    name: searchText.optional().describe('Agent name filter'),
+    ip: z.string().max(45).optional().describe('Agent IP filter'),
+    status: z.enum(['active', 'disconnected', 'pending', 'never_connected']).optional(),
     limit: z.number().min(1).max(100).optional().default(20),
   },
   READ_ONLY,
-  toolGuard(SERVER_NAME, "search-agents", async ({ name, ip, status, limit }) => {
+  toolGuard(SERVER_NAME, 'search-agents', async ({ name, ip, status, limit }) => {
     const params: Record<string, string> = { limit: String(limit) };
-    if (name) params["name"] = name;
-    if (ip) params["ip"] = ip;
-    if (status) params["status"] = status;
+    if (name) params.name = name;
+    if (ip) params.ip = ip;
+    if (status) params.status = status;
 
-    const result = await wazuhApi("/agents", params);
-    return { content: [{ type: "text" as const, text: formatResponse(result) }] };
-  })
+    const result = await wazuhApi('/agents', params);
+    return { content: [{ type: 'text' as const, text: formatResponse(result) }] };
+  }),
 );
 
 // ---------------------------------------------------------------------------
 // get-agent-info  — Server API /agents/{id}
 // ---------------------------------------------------------------------------
 server.tool(
-  "get-agent-info",
-  "Get detailed info about a specific Wazuh agent",
-  { agent_id: safeId.describe("Agent ID") },
+  'get-agent-info',
+  'Get detailed info about a specific Wazuh agent',
+  { agent_id: safeId.describe('Agent ID') },
   READ_ONLY,
-  toolGuard(SERVER_NAME, "get-agent-info", async ({ agent_id }) => {
+  toolGuard(SERVER_NAME, 'get-agent-info', async ({ agent_id }) => {
     // agent_id is validated by safeId to a URL-safe charset — no encoding needed.
     const result = await wazuhApi(`/agents/${agent_id}`);
-    return { content: [{ type: "text" as const, text: formatResponse(result) }] };
-  })
+    return { content: [{ type: 'text' as const, text: formatResponse(result) }] };
+  }),
 );
 
 // ---------------------------------------------------------------------------
 // get-vulnerabilities  — Indexer wazuh-states-vulnerabilities-* / _search
 // ---------------------------------------------------------------------------
 server.tool(
-  "get-vulnerabilities",
-  "List vulnerabilities (CVEs) detected on an agent (queries the Wazuh indexer)",
+  'get-vulnerabilities',
+  'List vulnerabilities (CVEs) detected on an agent (queries the Wazuh indexer)',
   {
-    agent_id: safeId.describe("Agent ID"),
-    severity: z.enum(["Critical", "High", "Medium", "Low"]).optional(),
+    agent_id: safeId.describe('Agent ID'),
+    severity: z.enum(['Critical', 'High', 'Medium', 'Low']).optional(),
     limit: z.number().min(1).max(100).optional().default(20),
   },
   READ_ONLY,
-  toolGuard(SERVER_NAME, "get-vulnerabilities", async ({ agent_id, severity, limit }) => {
+  toolGuard(SERVER_NAME, 'get-vulnerabilities', async ({ agent_id, severity, limit }) => {
     const body = buildVulnBody({ agent_id, severity, limit });
     const result = await indexerSearch(INDEXER_URL, VULN_INDEX, body, INDEXER_AUTH);
-    return { content: [{ type: "text" as const, text: formatResponse(result) }] };
-  })
+    return { content: [{ type: 'text' as const, text: formatResponse(result) }] };
+  }),
 );
 
 // ---------------------------------------------------------------------------
 // get-rules  — Server API /rules
 // ---------------------------------------------------------------------------
 server.tool(
-  "get-rules",
-  "Search active Wazuh detection rules",
+  'get-rules',
+  'Search active Wazuh detection rules',
   {
-    search: searchText.optional().describe("Search text in rule descriptions"),
-    level: z.number().min(1).max(15).optional().describe("Filter by exact rule level"),
-    group: searchText.optional().describe("Filter by rule group"),
+    search: searchText.optional().describe('Search text in rule descriptions'),
+    level: z.number().min(1).max(15).optional().describe('Filter by exact rule level'),
+    group: searchText.optional().describe('Filter by rule group'),
     limit: z.number().min(1).max(100).optional().default(20),
   },
   READ_ONLY,
-  toolGuard(SERVER_NAME, "get-rules", async ({ search, level, group, limit }) => {
+  toolGuard(SERVER_NAME, 'get-rules', async ({ search, level, group, limit }) => {
     const params: Record<string, string> = { limit: String(limit) };
-    if (search) params["search"] = search;
-    if (level !== undefined) params["level"] = String(level);
-    if (group) params["group"] = group;
+    if (search) params.search = search;
+    if (level !== undefined) params.level = String(level);
+    if (group) params.group = group;
 
-    const result = await wazuhApi("/rules", params);
-    return { content: [{ type: "text" as const, text: formatResponse(result) }] };
-  })
+    const result = await wazuhApi('/rules', params);
+    return { content: [{ type: 'text' as const, text: formatResponse(result) }] };
+  }),
 );
 
 // ---------------------------------------------------------------------------
 // get-decoders  — Server API /decoders
 // ---------------------------------------------------------------------------
 server.tool(
-  "get-decoders",
-  "Search active Wazuh log decoders",
+  'get-decoders',
+  'Search active Wazuh log decoders',
   {
-    search: searchText.optional().describe("Search text in decoder names"),
+    search: searchText.optional().describe('Search text in decoder names'),
     limit: z.number().min(1).max(100).optional().default(20),
   },
   READ_ONLY,
-  toolGuard(SERVER_NAME, "get-decoders", async ({ search, limit }) => {
+  toolGuard(SERVER_NAME, 'get-decoders', async ({ search, limit }) => {
     const params: Record<string, string> = { limit: String(limit) };
-    if (search) params["search"] = search;
+    if (search) params.search = search;
 
-    const result = await wazuhApi("/decoders", params);
-    return { content: [{ type: "text" as const, text: formatResponse(result) }] };
-  })
+    const result = await wazuhApi('/decoders', params);
+    return { content: [{ type: 'text' as const, text: formatResponse(result) }] };
+  }),
 );
 
 // --- Start Server ---
@@ -297,6 +320,9 @@ async function main() {
 }
 
 main().catch((err) => {
-  log("error", "fatal", { server: SERVER_NAME, detail: err instanceof Error ? err.message : String(err) });
+  log('error', 'fatal', {
+    server: SERVER_NAME,
+    detail: err instanceof Error ? err.message : String(err),
+  });
   process.exit(1);
 });

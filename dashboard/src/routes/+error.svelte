@@ -1,14 +1,12 @@
 <script lang="ts">
-  // Styled error boundary so unhandled load/render errors and 404s render INSIDE the
-  // MatchBox shell (was falling back to SvelteKit's default unstyled error page).
-  import { page } from '$app/stores';
-  import { TriangleAlert, LayoutDashboard } from 'lucide-svelte';
+// Styled error boundary so unhandled load/render errors and 404s render INSIDE the
+// MatchBox shell (was falling back to SvelteKit's default unstyled error page).
+import { page } from '$app/stores';
+import { LayoutDashboard, TriangleAlert } from 'lucide-svelte';
 
-  let status = $derived($page.status);
-  // Avoid leaking internal error detail; show a generic message for 5xx.
-  let message = $derived(
-    status === 404 ? 'Page not found' : 'Something went wrong'
-  );
+let status = $derived($page.status);
+// Avoid leaking internal error detail; show a generic message for 5xx.
+let message = $derived(status === 404 ? 'Page not found' : 'Something went wrong');
 </script>
 
 <div class="error-shell">

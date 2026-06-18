@@ -42,6 +42,23 @@ spec:
       port: 55000
       targetPort: 55000
 ---
+# PodDisruptionBudget — the manager is the single ingestion/correlation point for the
+# whole SOC, so a voluntary disruption (node drain / cluster upgrade) must not evict it
+# without a replacement. With replicas:1, minAvailable:1 blocks the eviction until the
+# pod can be safely rescheduled, preventing a silent alert-ingestion gap.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: wazuh-manager
+  namespace: wazuh
+  labels:
+    app.kubernetes.io/name: wazuh-manager
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: wazuh-manager
+---
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -88,8 +105,23 @@ spec:
               fi &&
               # Always overlay our managed ossec.conf (ConfigMap is the source of truth)
               cp /tmp/custom-config/ossec.conf /etc-init/ossec.conf &&
+              # WAVE-2 password-based enrollment (finding 3): seed authd.pass from the
+              # registration-password Secret so authd (use_password=yes) accepts only
+              # agents presenting this shared password. Always refresh so rotations apply.
+              # chmod 0640 keeps it off world-read; printf (not echo) avoids a trailing
+              # newline that authd would treat as part of the password. The file inherits
+              # the init container's uid, which matches the manager container that reads it.
+              printf %s "$WAZUH_REGISTRATION_PASSWORD" > /etc-init/authd.pass &&
+              chmod 0640 /etc-init/authd.pass &&
               mkdir -p /etc-init/shared &&
               [ -f /etc-init/shared/ar.conf ] || touch /etc-init/shared/ar.conf
+          # Registration password for authd, sourced from the Wazuh-ns Secret.
+          env:
+            - name: WAZUH_REGISTRATION_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: soc-wazuh-secrets
+                  key: registration-password
           # NOTE: the Wazuh manager image's /var/ossec tree is owned by the wazuh
           # user with restrictive perms; `cp -a` (preserving ownership) needs root
           # WITH DAC_OVERRIDE/CHOWN. Dropping ALL caps makes even root fail with
@@ -142,15 +174,15 @@ spec:
                   # reachable here. Fail closed if the key is absent.
                   name: soc-wazuh-secrets
                   key: indexer-password
-            # WAVE-2 HARDENING: 'none' for this one intra-cluster hop only (manager
-            # Filebeat -> shared OpenSearch). The wazuh-manager image regenerates
-            # filebeat.yml from its env template on every boot and does NOT wire
-            # ssl.certificate_authorities, so a 'certificate' mode rejects our self-signed
-            # CA. The hop is single-node, same-cluster, and locked down by NetworkPolicy.
-            # To re-enable verification: mount a ConfigMap filebeat.yml (subPath) that sets
-            # ssl.certificate_authorities: ['/etc/ssl/opensearch/root-ca.pem'].
+            # WAVE-2 HARDENING: verification RESTORED to 'certificate'. We now mount a
+            # managed filebeat.yml (wazuh-filebeat-config ConfigMap, subPath below) over
+            # the image's env-generated file; that managed file wires
+            # ssl.certificate_authorities: ['/etc/ssl/opensearch/root-ca.pem'] so the
+            # manager Filebeat -> shared OpenSearch hop validates the SOC CA. The mounted
+            # file overrides whatever the entrypoint regenerates, so this env stays
+            # consistent with the ConfigMap's verification_mode: 'certificate'.
             - name: FILEBEAT_SSL_VERIFICATION_MODE
-              value: "none"
+              value: "certificate"
           volumeMounts:
             - name: data
               mountPath: /var/ossec/data
@@ -162,6 +194,13 @@ spec:
               mountPath: /var/ossec/etc/decoders/custom
             - name: opensearch-certs
               mountPath: /etc/ssl/opensearch
+              readOnly: true
+            # WAVE-2: managed filebeat.yml overrides the env-regenerated file so the
+            # manager Filebeat verifies the OpenSearch cert against the SOC root CA
+            # (subPath mounts just this one file, leaving the rest of /etc/filebeat intact).
+            - name: filebeat-config
+              mountPath: /etc/filebeat/filebeat.yml
+              subPath: filebeat.yml
               readOnly: true
           # Startup probe gives the manager time to boot all daemons before
           # liveness begins, so a slow first boot does not trip a restart loop.
@@ -222,6 +261,10 @@ spec:
         - name: opensearch-certs
           secret:
             secretName: opensearch-certs
+        # WAVE-2: managed Filebeat config (CA verification on the alert-indexing hop).
+        - name: filebeat-config
+          configMap:
+            name: wazuh-filebeat-config
   volumeClaimTemplates:
     - metadata:
         name: data

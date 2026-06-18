@@ -1,7 +1,7 @@
 <script lang="ts">
-  import ServiceCard from '$lib/components/ServiceCard.svelte';
-  import GrafanaEmbed from '$lib/components/GrafanaEmbed.svelte';
-  import { services } from '$lib/config';
+import GrafanaEmbed from '$lib/components/GrafanaEmbed.svelte';
+import ServiceCard from '$lib/components/ServiceCard.svelte';
+import { services } from '$lib/config';
 </script>
 
 <div class="overview">

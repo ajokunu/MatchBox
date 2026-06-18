@@ -1,15 +1,15 @@
 <script lang="ts">
-  // `label` lets callers name the service so screen readers announce e.g. "Wazuh: online"
-  // rather than status being conveyed by color/animation alone.
-  let {
-    status = 'checking',
-    label = ''
-  }: {
-    status: 'online' | 'degraded' | 'offline' | 'checking';
-    label?: string;
-  } = $props();
+// `label` lets callers name the service so screen readers announce e.g. "Wazuh: online"
+// rather than status being conveyed by color/animation alone.
+let {
+  status = 'checking',
+  label = '',
+}: {
+  status: 'online' | 'degraded' | 'offline' | 'checking';
+  label?: string;
+} = $props();
 
-  let ariaLabel = $derived(label ? `${label}: ${status}` : `Status: ${status}`);
+let ariaLabel = $derived(label ? `${label}: ${status}` : `Status: ${status}`);
 </script>
 
 <span

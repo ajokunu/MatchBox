@@ -1,12 +1,12 @@
 <script lang="ts">
-  import { page } from '$app/stores';
-  import { LayoutDashboard, ExternalLink } from 'lucide-svelte';
-  import StatusDot from './StatusDot.svelte';
-  import { healthStore } from '$lib/stores';
-  import { services, iconMap } from '$lib/config';
+import { page } from '$app/stores';
+import { iconMap, services } from '$lib/config';
+import { healthStore } from '$lib/stores';
+import { ExternalLink, LayoutDashboard } from 'lucide-svelte';
+import StatusDot from './StatusDot.svelte';
 
-  // Single version source — injected from package.json via Vite (was a stale "v1.5.0" literal).
-  const version = __APP_VERSION__;
+// Single version source — injected from package.json via Vite (was a stale "v1.5.0" literal).
+const version = __APP_VERSION__;
 </script>
 
 <nav class="sidebar">

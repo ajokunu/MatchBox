@@ -1,6 +1,5 @@
 {
   "$schema": "https://biomejs.dev/schemas/1.9.4/schema.json",
-  "//": "Shared lint + format config for all TypeScript and Svelte workspaces (MCP servers + dashboard). Each workspace's `lint`/`format` npm scripts call biome; CI runs `npm run lint --workspaces`.",
   "vcs": {
     "enabled": true,
     "clientKind": "git",
@@ -33,7 +32,8 @@
       "recommended": true,
       "suspicious": {
         "noExplicitAny": "warn",
-        "noConsoleLog": "off"
+        "noConsoleLog": "off",
+        "noControlCharactersInRegex": "off"
       },
       "style": {
         "noNonNullAssertion": "off",
@@ -58,7 +58,6 @@
   },
   "overrides": [
     {
-      "//": "Biome cannot fully parse .svelte SFCs; format the embedded <script> only and skip lint rules that misfire on Svelte's compiler-magic ($:, exports). svelte-check (run in CI) covers Svelte type/semantic checks.",
       "include": ["**/*.svelte"],
       "linter": {
         "rules": {

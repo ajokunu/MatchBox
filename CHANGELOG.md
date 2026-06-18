@@ -3,6 +3,33 @@
 All notable changes to MatchBox are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioned with [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.0] — 2026-06-17
+
+Wave-2 hardening across 5 parallel lanes (mcp, dashboard, k8s-sec, scripts, docs-ci) closing the deferred items from 1.6.0: the OpenSearch admin password becomes a real bcrypt-hashed secret instead of the chart `admin/admin` default, the Wazuh manager's Filebeat → OpenSearch hop re-enables TLS certificate verification, Wazuh agents enroll with a shared password, and the MCP servers + dashboard gain robustness (request-level pagination, grammar-aware injection guards, typed responses, zod-validated upstreams, single-poller metrics, empty-vs-zero UI states). CI gains a Biome lint gate.
+
+### Added
+- **OpenSearch real admin password** (`scripts/setup-opensearch-users.sh`, new): idempotent script that bcrypt-hashes `soc-shared-secrets/opensearch-password` via the OpenSearch image's `hash.sh` (password fed over stdin, never on the arg list), renders a custom `internal_users.yml`, creates the `opensearch-securityconfig` Secret (ns `shared`), and applies it live via `securityadmin.sh` (kirk admin client cert). Wired into `deploy-stack.sh` `deploy_shared()` after OpenSearch readiness and before Wazuh, plus a standalone `opensearch-users` component for re-applying after a rotation.
+- **Wazuh agent password enrollment** (finding 3): new `soc-wazuh-secrets/registration-password` key, `<use_password>yes</use_password>` in `ossec.conf`, manager initContainer seeds `/var/ossec/etc/authd.pass` (chmod 0640), and the agent DaemonSet passes `WAZUH_REGISTRATION_PASSWORD` (fail-closed, no `optional:true`).
+- **Wazuh manager PodDisruptionBudget** (`minAvailable: 1`) so node drains cannot evict the sole ingestion pod without a replacement.
+- **Managed Filebeat config** (`k8s/wazuh/manager/configmap-filebeat.yaml`, new `wazuh-filebeat-config` ConfigMap): `filebeat.yml` with `ssl.verification_mode: certificate`, `certificate_authorities: [/etc/ssl/opensearch/root-ca.pem]`, password expanded from `${INDEXER_PASSWORD}` (not baked in), `compatibility.override_main_response_version: true`.
+- **OpenCTI request-level Relay pagination** (finding 36): list tools (`search-observables`, `search-reports`, `get-attack-patterns`, `get-relationships`) accept an `after` cursor and return `pageInfo { endCursor hasNextPage }`; pure `buildPageVariables`/`isValidCursor` helpers + Vitest coverage.
+- **Dashboard empty state** (finding 22/59): `StatBox` gains `empty`/`emptyHint` props rendering a muted em-dash placeholder (dashed border, aria-labelled) so "reached-but-unpopulated" is distinct from a genuine 0; wired into thehive/opencti/cortex pages.
+- **Dashboard zod validation** on `/api/wazuh` (finding 22/42): five schemas (stats/agents/info/rules/sca) parsed via a `parseOr()` safeParse helper with empty-but-valid fallback, so a malformed 200 body degrades gracefully instead of a TypeError masked into a 502.
+- **Lima minimal profile toggle** (`setup-lima.sh`): `MINIMAL=1` / `CONFIG=minimal` selects `lima/k3s-soc-minimal.yaml` (6GiB/2CPU); VM name stays `k3s-soc` so kubeconfig resolution is unchanged.
+- **CI Biome lint job** (`.github/workflows/ci.yml`): `npx --no-install biome check .` (lint + format) on the `.nvmrc`-pinned Node, checkout pinned to a commit SHA; root `@biomejs/biome` 1.9.4 devDependency + `lint`/`format` scripts.
+
+### Changed
+- **OpenSearch** (`k8s/shared/opensearch.yaml`): `securityConfig.securityConfigSecret: opensearch-securityconfig` + `dataComplete: true` so the chart mounts the custom `internal_users.yml` (real admin hash) instead of the demo default.
+- **Wazuh manager Filebeat**: `FILEBEAT_SSL_VERIFICATION_MODE` flipped `none` → `certificate`; the `wazuh-filebeat-config` ConfigMap is subPath-mounted at `/etc/filebeat/filebeat.yml`, restoring CA-verified alert indexing.
+- **Wazuh egress NetworkPolicies** (finding 33): namespace-wide `allow-egress-wazuh` (podSelector `{}`) split into three least-privilege rules — `allow-egress-wazuh-dns` (DNS + in-ns, all pods), `allow-egress-wazuh-manager` (OpenSearch 9200, manager only), `allow-egress-wazuh-dashboard` (OpenSearch 9200, dashboard only). Total NetworkPolicy count rises 32 → 34.
+- **Wazuh MCP free-text params** (finding 6): the over-conservative `[\w .\-/]*` charset filter on search/group/name replaced with a grammar-aware operator denylist (`isSafeWazuhSearch`, blocks `; , ( ) = < > ~ ! \` + control chars, 256-char cap) — injection-safe yet permits real rule/decoder text.
+- **TheHive MCP typing** (finding 25): `thehiveApi` is now generic `<T = unknown>` with `TheHiveCase`/`TheHiveObservable`/`TheHiveCortexJob` response interfaces on the stable case/observable/cortex-job endpoints; `/api/v1/query` stays `unknown`.
+- **Dashboard double-poll removed** (findings 47/48): `ServiceDetailLayout` reads the shared `metricsStore` fed by the single global poller (via new `storeKeyForEndpoint` map + `metricsStatusStore`) instead of running a second 60s timer per page; tab-hidden pause + failure backoff stay in the one global poller; Refresh button does a one-off `fetchMetrics`.
+- **docs/integrations.md**: dropped the stale `soc-thehive-secrets/api-key` reference (that key does not exist); TheHive REST API key documented as created in-app post-login and injected via a connector-local Secret.
+- **.github/SECURITY.md**: Credential Management rewritten to the SOPS+age model (committed `secrets.enc.yaml` ciphertext, age key outside repo, decrypt-at-apply, gitleaks-enforced); added a direct security contact.
+- **README.md**: dashboard setup references `NODE_EXTRA_CA_CERTS` (verify TLS against the SOC CA) instead of the removed `NODE_TLS_REJECT_UNAUTHORIZED`.
+- **Node engine pin** `>=20` added to all four MCP package.json files and `dashboard/package.json`; `dashboard` declares `zod ^3.22.0` as a runtime dependency.
+
 ## [1.6.0] — 2026-06-17
 
 A full-codebase hardening pass across 7 parallel lanes (mcp, dashboard, k8s-wazuh, k8s-rest-sec, scripts, docs, ci-dx) closing ~200 audit findings (see `docs/AUDIT-2026-findings.json`). Per `docs/IMPLEMENTATION-CONTRACT.md`, this moves the SOC from "demo-grade with TLS disabled and broken MCP endpoints" to "fail-closed, CA-verified, CI-gated, SOPS-managed". The Wazuh MCP now queries the real OpenSearch indexer, every TLS-verification kill switch is gone, secrets move to SOPS+age, and an npm-workspaces monorepo + GitHub Actions CI build and validate the whole tree.

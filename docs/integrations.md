@@ -108,8 +108,8 @@ Critical for Cortex on Kubernetes:
 ### Configuration
 The OpenCTI <-> TheHive link is configured on the OpenCTI side via the official
 TheHive connectors (a stream connector pushing intel into TheHive, and an import
-connector pulling cases back). Set the TheHive URL and an API token in the connector's
-environment (referenced from `soc-thehive-secrets`):
+connector pulling cases back). Set the TheHive URL plus its REST API key, and the
+OpenCTI URL plus the platform token (sourced from `soc-opencti-secrets`):
 
 ```yaml
 # OpenCTI connector-thehive environment (k8s/opencti/connectors/)
@@ -117,14 +117,16 @@ env:
   - name: THEHIVE_URL
     value: "http://thehive.thehive.svc.cluster.local:9000"
   - name: THEHIVE_API_KEY
+    # TheHive's REST API key is NOT a deploy-time secret: it is generated in the
+    # TheHive UI after first login (Organisation → Users → create API key). It is
+    # therefore not held in soc-thehive-secrets (which carries only the deploy-time
+    # values play-secret and cortex-api-key). Create the key in-app, then inject it
+    # into this connector via your own Secret/env — e.g. add it as a key on the
+    # connector's Secret and reference it here, or set it on the connector Deployment.
     valueFrom:
       secretKeyRef:
-        name: soc-thehive-secrets
-        # NOTE: TheHive's API key cannot be known at deploy time — create it in the
-        # TheHive UI after first login, then add it to soc-thehive-secrets under this
-        # key (it is intentionally not in secrets.yaml.example, which holds only
-        # deploy-time-knowable values: play-secret, cortex-api-key).
-        key: api-key
+        name: opencti-connector-thehive   # connector-local Secret you create post-login
+        key: thehive-api-key
   - name: OPENCTI_URL
     value: "http://opencti.opencti.svc.cluster.local:4000"
   - name: OPENCTI_TOKEN

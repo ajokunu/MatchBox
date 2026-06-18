@@ -1,61 +1,75 @@
 <script lang="ts">
-  import { ExternalLink } from 'lucide-svelte';
-  import StatusDot from './StatusDot.svelte';
-  import StatBox from './StatBox.svelte';
-  import { healthStore, metricsStore } from '$lib/stores';
-  import { iconMap, CHECKING_STATUS, LOADING_PLACEHOLDER, type ServiceConfig } from '$lib/config';
+import { CHECKING_STATUS, LOADING_PLACEHOLDER, type ServiceConfig, iconMap } from '$lib/config';
+import { healthStore, metricsStore } from '$lib/stores';
+import { ExternalLink } from 'lucide-svelte';
+import StatBox from './StatBox.svelte';
+import StatusDot from './StatusDot.svelte';
 
-  let { service }: { service: ServiceConfig } = $props();
+let { service }: { service: ServiceConfig } = $props();
 
-  type ColorVariant = 'default' | 'accent' | 'green' | 'yellow';
+type ColorVariant = 'default' | 'accent' | 'green' | 'yellow';
 
-  function openExternal(e: MouseEvent) {
-    e.stopPropagation();
-    window.open(service.dashboardUrl, '_blank', 'noopener');
-  }
+function openExternal(e: MouseEvent) {
+  e.stopPropagation();
+  window.open(service.dashboardUrl, '_blank', 'noopener');
+}
 
-  let health = $derived($healthStore[service.id]);
-  let metrics = $derived($metricsStore[service.id] ?? {});
-  let Icon = $derived(iconMap[service.icon]);
-  let statusLabel = $derived(health?.status ?? CHECKING_STATUS);
+let health = $derived($healthStore[service.id]);
+let metrics = $derived($metricsStore[service.id] ?? {});
+let Icon = $derived(iconMap[service.icon]);
+let statusLabel = $derived(health?.status ?? CHECKING_STATUS);
 
-  function fmt(v: unknown): string | number {
-    if (v === undefined || v === null) return LOADING_PLACEHOLDER;
-    return v as string | number;
-  }
+function fmt(v: unknown): string | number {
+  if (v === undefined || v === null) return LOADING_PLACEHOLDER;
+  return v as string | number;
+}
 
-  let stats = $derived.by<Array<{ label: string; value: string | number; color: ColorVariant }>>(() => {
+let stats = $derived.by<Array<{ label: string; value: string | number; color: ColorVariant }>>(
+  () => {
     const m = metrics;
     switch (service.id) {
       case 'wazuh':
         return [
           { label: 'Alerts', value: fmt(m.totalAlerts), color: 'accent' },
-          { label: 'Agents', value: `${fmt(m.activeAgents)}/${fmt(m.totalAgents)}`, color: 'default' }
+          {
+            label: 'Agents',
+            value: `${fmt(m.activeAgents)}/${fmt(m.totalAgents)}`,
+            color: 'default',
+          },
         ];
       case 'grafana':
         return [
           { label: 'Dashboards', value: fmt(m.dashboards), color: 'accent' },
-          { label: 'Version', value: m.version ? String(m.version).slice(0, 6) : LOADING_PLACEHOLDER, color: 'default' }
+          {
+            label: 'Version',
+            value: m.version ? String(m.version).slice(0, 6) : LOADING_PLACEHOLDER,
+            color: 'default',
+          },
         ];
       case 'opencti':
         return [
           { label: 'Indicators', value: fmt(m.indicators), color: 'accent' },
-          { label: 'Connectors', value: `${fmt(m.activeConnectors)}/${fmt(m.connectors)}`, color: 'default' }
+          {
+            label: 'Connectors',
+            value: `${fmt(m.activeConnectors)}/${fmt(m.connectors)}`,
+            color: 'default',
+          },
         ];
       case 'thehive':
         return [
           { label: 'Cases', value: fmt(m.openCases), color: 'accent' },
-          { label: 'Alerts', value: fmt(m.alerts), color: 'default' }
+          { label: 'Alerts', value: fmt(m.alerts), color: 'default' },
         ];
       case 'cortex':
         return [
           { label: 'Analyzers', value: fmt(m.analyzers), color: 'accent' },
-          { label: 'Status', value: m.configured ? 'Active' : 'Setup', color: 'default' }
+          { label: 'Status', value: m.configured ? 'Active' : 'Setup', color: 'default' },
         ];
       default:
         return [];
     }
-  });
+  },
+);
 </script>
 
 <!--

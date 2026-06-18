@@ -55,7 +55,7 @@ or count, update it **here first**, then reconcile references.
 
 | Count | Value | Breakdown | Source |
 |-------|-------|-----------|--------|
-| NetworkPolicies | **32** | 5 default-deny-ingress + 5 default-deny-egress + 22 explicit allow (17 ingress-allow + 5 egress-allow), one deny pair per namespace × 5 namespaces | `k8s/network-policies.yaml` |
+| NetworkPolicies | **34** | 5 default-deny-ingress + 5 default-deny-egress + 24 explicit allow, one deny pair per namespace × 5 namespaces (verify with `grep -c 'kind: NetworkPolicy' k8s/network-policies.yaml`) | `k8s/network-policies.yaml` |
 | Namespaces | 5 | `shared`, `wazuh`, `thehive`, `opencti`, `monitoring` | `k8s/namespaces.yaml` |
 | MCP servers | 3 | `wazuh-mcp`, `thehive-mcp`, `opencti-mcp` (+ `@matchbox/mcp-shared` lib) | `mcp-servers/` |
 | MCP tools (wazuh-mcp) | 7 | list-alerts, get-alert, search-agents, get-agent-info, get-vulnerabilities, get-rules, get-decoders | `mcp-servers/wazuh-mcp/src/index.ts` |
