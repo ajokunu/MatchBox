@@ -6,7 +6,23 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 
+# --- VM profile selection ------------------------------------------------------
+# By default we provision the full SOC VM (10GiB / 4 CPU). Set MINIMAL=1 (or
+# CONFIG=minimal) to provision the slim Wazuh-only profile (6GiB / 2 CPU) from
+# lima/k3s-soc-minimal.yaml — useful on tighter hardware or for the minimal deploy
+# path. The VM NAME stays `k3s-soc` either way so every other script's kubeconfig
+# resolution (limactl list k3s-soc ...) keeps working unchanged.
+LIMA_CONFIG="$PROJECT_DIR/lima/k3s-soc.yaml"
+VM_PROFILE="full (10GiB / 4 CPU)"
+case "${CONFIG:-}${MINIMAL:+minimal}" in
+  minimal|MINIMAL)
+    LIMA_CONFIG="$PROJECT_DIR/lima/k3s-soc-minimal.yaml"
+    VM_PROFILE="minimal (6GiB / 2 CPU)"
+    ;;
+esac
+
 echo "=== MatchBox — Lima VM Setup ==="
+echo "  Profile: $VM_PROFILE  (config: $LIMA_CONFIG)"
 
 # Ensure Homebrew is in PATH (common issue on Apple Silicon)
 if [ -f /opt/homebrew/bin/brew ]; then
@@ -48,10 +64,10 @@ if limactl list --format '{{.Name}}' 2>/dev/null | grep -q "^k3s-soc$"; then
     limactl start k3s-soc
   fi
 else
-  # Create and start Lima VM
-  echo "[2/5] Creating Lima VM (10GB RAM, 4 CPUs, 120GB disk)..."
+  # Create and start Lima VM (profile selected above; name is always k3s-soc).
+  echo "[2/5] Creating Lima VM — $VM_PROFILE..."
   echo "  This will take a few minutes on first boot..."
-  limactl start "$PROJECT_DIR/lima/k3s-soc.yaml" --name k3s-soc
+  limactl start "$LIMA_CONFIG" --name k3s-soc
 fi
 
 # Configure kubeconfig
@@ -59,15 +75,17 @@ echo "[3/5] Configuring kubeconfig..."
 KUBECONFIG_PATH="$(limactl list k3s-soc --format '{{.Dir}}')/copied-from-guest/kubeconfig.yaml"
 
 if [ -f "$KUBECONFIG_PATH" ]; then
-  # Fix server address for macOS access
-  sed -i '' 's/0\.0\.0\.0/127.0.0.1/g' "$KUBECONFIG_PATH" 2>/dev/null || true
+  # The copied kubeconfig already points at 127.0.0.1 (k3s default), which is
+  # host-reachable because Lima forwards guest 6443 -> 127.0.0.1:6443. No rewrite
+  # needed (the provision script no longer rewrites the server to 0.0.0.0).
   export KUBECONFIG="$KUBECONFIG_PATH"
   echo "  KUBECONFIG=$KUBECONFIG_PATH"
 else
   echo "  ERROR: kubeconfig not found at $KUBECONFIG_PATH"
   echo "  Trying manual copy..."
   limactl shell k3s-soc sudo cat /etc/rancher/k3s/k3s.yaml > /tmp/k3s-soc-kubeconfig.yaml
-  sed -i '' 's/127\.0\.0\.1/127.0.0.1/g' /tmp/k3s-soc-kubeconfig.yaml
+  # /etc/rancher/k3s/k3s.yaml already uses 127.0.0.1, reachable via the 6443
+  # port-forward — no sed rewrite is required here.
   KUBECONFIG_PATH="/tmp/k3s-soc-kubeconfig.yaml"
   export KUBECONFIG="$KUBECONFIG_PATH"
 fi

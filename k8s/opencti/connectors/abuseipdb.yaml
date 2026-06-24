@@ -24,9 +24,20 @@ spec:
       template:
         spec:
           restartPolicy: Never
+          # Hardening — connectors parse untrusted external threat-intel data.
+          automountServiceAccountToken: false
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            seccompProfile:
+              type: RuntimeDefault
           containers:
             - name: abuseipdb
-              image: opencti/connector-abuseipdb:6.9.5
+              image: opencti/connector-abuseipdb:6.9.5  # MUST match platform tag (helm-values.yaml)
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop: ["ALL"]
               resources:
                 requests:
                   memory: "128Mi"

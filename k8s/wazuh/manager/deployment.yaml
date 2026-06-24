@@ -22,6 +22,43 @@ spec:
       targetPort: 55000
   clusterIP: None
 ---
+# Stable ClusterIP Service for the 55000 Server API.
+# The headless Service above gives the StatefulSet its stable network identity,
+# but a headless lookup returns the pod IP directly, which churns during rollouts.
+# The dashboard talks to the API via this VIP so it survives pod IP changes.
+apiVersion: v1
+kind: Service
+metadata:
+  name: wazuh-manager-api
+  namespace: wazuh
+  labels:
+    app.kubernetes.io/name: wazuh-manager
+    app.kubernetes.io/component: api
+spec:
+  selector:
+    app.kubernetes.io/name: wazuh-manager
+  ports:
+    - name: api
+      port: 55000
+      targetPort: 55000
+---
+# PodDisruptionBudget — the manager is the single ingestion/correlation point for the
+# whole SOC, so a voluntary disruption (node drain / cluster upgrade) must not evict it
+# without a replacement. With replicas:1, minAvailable:1 blocks the eviction until the
+# pod can be safely rescheduled, preventing a silent alert-ingestion gap.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: wazuh-manager
+  namespace: wazuh
+  labels:
+    app.kubernetes.io/name: wazuh-manager
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: wazuh-manager
+---
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -41,21 +78,58 @@ spec:
         app.kubernetes.io/name: wazuh-manager
     spec:
       automountServiceAccountToken: false
-      # InitContainer copies default /var/ossec/etc/ from the image to an emptyDir,
-      # then overlays our custom ossec.conf. This ensures:
-      # 1. The init scripts can sed -i on ossec.conf (writable filesystem, not ConfigMap)
-      # 2. Default files like etc/shared/ar.conf are present
-      # 3. Custom rules/decoders still overlay via separate ConfigMap mounts
+      # Pod-level hardening baseline (Contract Section 7). The Wazuh manager image
+      # runs its daemons as root internally, so runAsNonRoot is not yet feasible here,
+      # but we still apply the default seccomp profile to shrink the syscall surface.
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      # InitContainer seeds the PVC-backed /var/ossec/etc ONLY when it is empty
+      # (first boot / fresh volume), then always overlays our custom ossec.conf.
+      # Persisting etc on a PVC (not emptyDir) keeps client.keys / agent identities
+      # across restarts so agents do not have to re-enroll (audit finding: emptyDir
+      # wiped client.keys on every restart). On subsequent boots the existing etc is
+      # preserved and we only refresh ossec.conf from the ConfigMap.
       initContainers:
         - name: init-config
           image: wazuh/wazuh-manager:4.14.3
+          imagePullPolicy: IfNotPresent  # version-tagged; avoid re-pull churn
           command: ["sh", "-c"]
           args:
             - |
-              cp -a /var/ossec/etc/. /etc-init/ &&
+              # Seed image defaults only when the persistent etc volume is empty,
+              # so client.keys and other runtime state survive restarts.
+              if [ ! -f /etc-init/.seeded ]; then
+                cp -a /var/ossec/etc/. /etc-init/ &&
+                touch /etc-init/.seeded
+              fi &&
+              # Always overlay our managed ossec.conf (ConfigMap is the source of truth)
               cp /tmp/custom-config/ossec.conf /etc-init/ossec.conf &&
+              # WAVE-2 password-based enrollment (finding 3): seed authd.pass from the
+              # registration-password Secret so authd (use_password=yes) accepts only
+              # agents presenting this shared password. Always refresh so rotations apply.
+              # chmod 0640 keeps it off world-read; printf (not echo) avoids a trailing
+              # newline that authd would treat as part of the password. The file inherits
+              # the init container's uid, which matches the manager container that reads it.
+              printf %s "$WAZUH_REGISTRATION_PASSWORD" > /etc-init/authd.pass &&
+              chmod 0640 /etc-init/authd.pass &&
               mkdir -p /etc-init/shared &&
               [ -f /etc-init/shared/ar.conf ] || touch /etc-init/shared/ar.conf
+          # Registration password for authd, sourced from the Wazuh-ns Secret.
+          env:
+            - name: WAZUH_REGISTRATION_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: soc-wazuh-secrets
+                  key: registration-password
+          # NOTE: the Wazuh manager image's /var/ossec tree is owned by the wazuh
+          # user with restrictive perms; `cp -a` (preserving ownership) needs root
+          # WITH DAC_OVERRIDE/CHOWN. Dropping ALL caps makes even root fail with
+          # "Permission denied", so we keep the image's default caps here (seccomp
+          # still constrains the syscall surface).
+          securityContext:
+            seccompProfile:
+              type: RuntimeDefault
           volumeMounts:
             - name: config-staging
               mountPath: /tmp/custom-config
@@ -64,8 +138,15 @@ spec:
       containers:
         - name: wazuh-manager
           image: wazuh/wazuh-manager:4.14.3
+          imagePullPolicy: IfNotPresent
+          # The Wazuh manager runs wazuh-control which starts its daemons as root and
+          # drops to the wazuh user via setuid — this needs the image's default caps
+          # and privilege escalation. Dropping ALL caps / disabling setuid breaks the
+          # manager. seccomp RuntimeDefault still constrains the syscall surface; full
+          # rootless hardening is tracked for wave 2.
           securityContext:
-            allowPrivilegeEscalation: false
+            seccompProfile:
+              type: RuntimeDefault
           ports:
             - containerPort: 1514
               name: agent-events
@@ -88,13 +169,20 @@ spec:
             - name: INDEXER_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: soc-shared-secrets
-                  key: opensearch-password
-                  optional: true
+                  # wazuh-ns mirror of the OpenSearch admin password — secretKeyRefs
+                  # cannot cross namespaces, so soc-shared-secrets (shared ns) is not
+                  # reachable here. Fail closed if the key is absent.
+                  name: soc-wazuh-secrets
+                  key: indexer-password
+            # WAVE-2 HARDENING: verification RESTORED to 'certificate'. We now mount a
+            # managed filebeat.yml (wazuh-filebeat-config ConfigMap, subPath below) over
+            # the image's env-generated file; that managed file wires
+            # ssl.certificate_authorities: ['/etc/ssl/opensearch/root-ca.pem'] so the
+            # manager Filebeat -> shared OpenSearch hop validates the SOC CA. The mounted
+            # file overrides whatever the entrypoint regenerates, so this env stays
+            # consistent with the ConfigMap's verification_mode: 'certificate'.
             - name: FILEBEAT_SSL_VERIFICATION_MODE
               value: "certificate"
-            - name: FILEBEAT_SSL_CERTIFICATE_AUTHORITIES
-              value: "/etc/ssl/opensearch/ca.crt"
           volumeMounts:
             - name: data
               mountPath: /var/ossec/data
@@ -107,25 +195,63 @@ spec:
             - name: opensearch-certs
               mountPath: /etc/ssl/opensearch
               readOnly: true
+            # WAVE-2: managed filebeat.yml overrides the env-regenerated file so the
+            # manager Filebeat verifies the OpenSearch cert against the SOC root CA
+            # (subPath mounts just this one file, leaving the rest of /etc/filebeat intact).
+            - name: filebeat-config
+              mountPath: /etc/filebeat/filebeat.yml
+              subPath: filebeat.yml
+              readOnly: true
+          # Startup probe gives the manager time to boot all daemons before
+          # liveness begins, so a slow first boot does not trip a restart loop.
+          startupProbe:
+            exec:
+              # Ready when the CORE daemons are up. Plain `wazuh-control status` exits
+              # non-zero if ANY (incl. optional/disabled: clusterd, maild, integratord,
+              # csyslogd) daemon is down, which would keep a healthy manager un-Ready.
+              command:
+                - sh
+                - -c
+                - 'for d in wazuh-analysisd wazuh-remoted wazuh-db wazuh-apid; do /var/ossec/bin/wazuh-control status | grep -q "$d is running" || exit 1; done'
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 10
+            failureThreshold: 30
+          # Exec probes inspect actual daemon health (analysisd, remoted, wazuh-db,
+          # indexer connector) instead of merely confirming port 1514 is bound —
+          # a port-only check can pass while the manager is degraded and alerts
+          # have silently stopped flowing.
           readinessProbe:
-            tcpSocket:
-              port: 1514
-            initialDelaySeconds: 45
+            exec:
+              # Ready when the CORE daemons are up. Plain `wazuh-control status` exits
+              # non-zero if ANY (incl. optional/disabled: clusterd, maild, integratord,
+              # csyslogd) daemon is down, which would keep a healthy manager un-Ready.
+              command:
+                - sh
+                - -c
+                - 'for d in wazuh-analysisd wazuh-remoted wazuh-db wazuh-apid; do /var/ossec/bin/wazuh-control status | grep -q "$d is running" || exit 1; done'
             periodSeconds: 15
-            timeoutSeconds: 5
+            timeoutSeconds: 10
+            failureThreshold: 3
           livenessProbe:
-            tcpSocket:
-              port: 1514
-            initialDelaySeconds: 120
+            exec:
+              # Ready when the CORE daemons are up. Plain `wazuh-control status` exits
+              # non-zero if ANY (incl. optional/disabled: clusterd, maild, integratord,
+              # csyslogd) daemon is down, which would keep a healthy manager un-Ready.
+              command:
+                - sh
+                - -c
+                - 'for d in wazuh-analysisd wazuh-remoted wazuh-db wazuh-apid; do /var/ossec/bin/wazuh-control status | grep -q "$d is running" || exit 1; done'
             periodSeconds: 30
-            timeoutSeconds: 5
+            timeoutSeconds: 10
             failureThreshold: 6
       volumes:
         - name: config-staging
           configMap:
             name: wazuh-manager-config
-        - name: etc-writable
-          emptyDir: {}
+        # NOTE: 'etc-writable' is intentionally NOT declared here — it is provided
+        # by the 'etc-writable' volumeClaimTemplate below so /var/ossec/etc (and
+        # therefore client.keys / agent identities) persists across pod restarts.
         - name: custom-rules
           configMap:
             name: wazuh-custom-rules
@@ -135,6 +261,10 @@ spec:
         - name: opensearch-certs
           secret:
             secretName: opensearch-certs
+        # WAVE-2: managed Filebeat config (CA verification on the alert-indexing hop).
+        - name: filebeat-config
+          configMap:
+            name: wazuh-filebeat-config
   volumeClaimTemplates:
     - metadata:
         name: data
@@ -144,3 +274,14 @@ spec:
         resources:
           requests:
             storage: 5Gi
+    # Persist /var/ossec/etc (client.keys, ossec.conf, internal options) so agent
+    # registration identities survive manager restarts/rescheduling instead of
+    # being wiped from an emptyDir and forcing every agent to re-enroll.
+    - metadata:
+        name: etc-writable
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: "local-path"
+        resources:
+          requests:
+            storage: 1Gi

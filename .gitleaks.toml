@@ -1,0 +1,19 @@
+# gitleaks config for MatchBox.
+# Extends the default ruleset and allowlists the secrets TEMPLATE, which by design
+# contains only CHANGE_ME placeholders (base64 of "CHANGE_ME_*") — not real secrets.
+# The real k8s/shared/secrets.yaml is gitignored and SOPS-encrypted as secrets.enc.yaml.
+title = "MatchBox gitleaks"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Placeholder-only template + SOPS-encrypted secrets are not leaks"
+paths = [
+  '''k8s/shared/secrets\.yaml\.example''',
+  '''k8s/shared/secrets\.enc\.yaml''',
+]
+regexes = [
+  # base64 of "CHANGE_ME..." placeholders used throughout the template
+  '''Q0hBTkdF[A-Za-z0-9+/=]*''',
+]

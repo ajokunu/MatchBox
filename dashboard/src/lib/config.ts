@@ -1,3 +1,6 @@
+import { env } from '$env/dynamic/public';
+import { Brain, ChartColumn, Radar, Shield, ShieldAlert } from 'lucide-svelte';
+
 export interface ServiceConfig {
   id: string;
   name: string;
@@ -10,6 +13,47 @@ export interface ServiceConfig {
   port: number;
 }
 
+/**
+ * Single source of truth for the icon lookup, shared by ServiceCard + Sidebar + the
+ * service detail layout so the map is declared once (was duplicated identically across
+ * components). Typed as `typeof Shield` to match lucide-svelte's component type.
+ */
+export const iconMap: Record<string, typeof Shield> = {
+  Shield,
+  ChartColumn,
+  Radar,
+  ShieldAlert,
+  Brain,
+};
+
+/** Shared placeholders so the "not loaded yet" representation is consistent everywhere. */
+export const LOADING_PLACEHOLDER = '...';
+export const CHECKING_STATUS = 'checking';
+
+/**
+ * Maps a detail page's `/api/<id>` endpoint to its key in the shared metricsStore. Today the
+ * endpoint id and store key are identical, but routing through this map means a future rename
+ * (or an endpoint that aggregates into a different store key) is a one-line change here and the
+ * detail layout keeps reading from the single global poller instead of double-fetching.
+ */
+export function storeKeyForEndpoint(endpoint: string): string {
+  const id = endpoint.replace(/^\/api\//, '').replace(/\/.*$/, '');
+  return id;
+}
+
+/**
+ * Public, client-exposed base URLs. These are read in the BROWSER (iframe srcs +
+ * "open in new tab" links) so they must be reachable from wherever the operator
+ * browses — set PUBLIC_*_URL when serving off-localhost. Defaults keep local dev working.
+ */
+export const publicUrls = {
+  wazuhDashboard: env.PUBLIC_WAZUH_DASHBOARD_URL || 'https://localhost:5601',
+  grafana: env.PUBLIC_GRAFANA_URL || 'http://localhost:3000',
+  opencti: env.PUBLIC_OPENCTI_URL || 'http://localhost:4000',
+  thehive: env.PUBLIC_THEHIVE_URL || 'http://localhost:9000',
+  cortex: env.PUBLIC_CORTEX_URL || 'http://localhost:9001',
+};
+
 export const services: ServiceConfig[] = [
   {
     id: 'wazuh',
@@ -18,9 +62,10 @@ export const services: ServiceConfig[] = [
     badge: 'SIEM',
     color: 'var(--accent)',
     icon: 'Shield',
-    dashboardUrl: 'https://localhost:5601',
+    // Derived from PUBLIC_* env so a host/port change happens in one place (was hardcoded).
+    dashboardUrl: publicUrls.wazuhDashboard,
     embeddable: false,
-    port: 5601
+    port: 5601,
   },
   {
     id: 'grafana',
@@ -29,9 +74,9 @@ export const services: ServiceConfig[] = [
     badge: 'MONITOR',
     color: 'var(--accent)',
     icon: 'ChartColumn',
-    dashboardUrl: 'http://localhost:3000',
+    dashboardUrl: publicUrls.grafana,
     embeddable: true,
-    port: 3000
+    port: 3000,
   },
   {
     id: 'opencti',
@@ -40,9 +85,9 @@ export const services: ServiceConfig[] = [
     badge: 'THREAT INTEL',
     color: 'var(--accent)',
     icon: 'Radar',
-    dashboardUrl: 'http://localhost:4000',
+    dashboardUrl: publicUrls.opencti,
     embeddable: false,
-    port: 4000
+    port: 4000,
   },
   {
     id: 'thehive',
@@ -51,9 +96,9 @@ export const services: ServiceConfig[] = [
     badge: 'IR',
     color: 'var(--accent)',
     icon: 'ShieldAlert',
-    dashboardUrl: 'http://localhost:9000',
+    dashboardUrl: publicUrls.thehive,
     embeddable: true,
-    port: 9000
+    port: 9000,
   },
   {
     id: 'cortex',
@@ -62,15 +107,21 @@ export const services: ServiceConfig[] = [
     badge: 'SOAR',
     color: 'var(--accent)',
     icon: 'Brain',
-    dashboardUrl: 'http://localhost:9001',
+    dashboardUrl: publicUrls.cortex,
     embeddable: false,
-    port: 9001
-  }
+    port: 9001,
+  },
 ];
 
 export const grafanaDashboards = [
   { label: 'Wazuh SOC', path: '/d/wazuh-soc-overview/wazuh-soc-overview?orgId=1&kiosk' },
-  { label: 'K8s Cluster', path: '/d/efa86fd1d0c121a26444b636a3f509a8/kubernetes-compute-resources-cluster?orgId=1&kiosk' },
-  { label: 'Node Exporter', path: '/d/7d57716318ee0dddbac5a7f451fb7753/node-exporter-nodes?orgId=1&kiosk' },
-  { label: 'CoreDNS', path: '/d/vkQ0UHxik/coredns?orgId=1&kiosk' }
+  {
+    label: 'K8s Cluster',
+    path: '/d/efa86fd1d0c121a26444b636a3f509a8/kubernetes-compute-resources-cluster?orgId=1&kiosk',
+  },
+  {
+    label: 'Node Exporter',
+    path: '/d/7d57716318ee0dddbac5a7f451fb7753/node-exporter-nodes?orgId=1&kiosk',
+  },
+  { label: 'CoreDNS', path: '/d/vkQ0UHxik/coredns?orgId=1&kiosk' },
 ];

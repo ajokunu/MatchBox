@@ -3,7 +3,11 @@
 # on the single-node cluster. In a multi-node setup, replace with NFS or
 # a distributed storage class.
 ---
-# Cortex shared data — NFS-backed PV for analyzer job I/O
+# Cortex shared data — NFS-backed PV for analyzer job I/O.
+# RWM is valid here because the backing store is the in-cluster nfs-server.
+# That server is itself backed by a local-path (RWO, node-local) PVC, so the whole
+# RWM guarantee depends on the single-node assumption documented above and in
+# k8s/storage/nfs-server.yaml (the nfs-server pod must not reschedule off its node).
 apiVersion: v1
 kind: PersistentVolume
 metadata:

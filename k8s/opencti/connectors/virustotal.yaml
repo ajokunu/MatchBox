@@ -12,8 +12,12 @@ metadata:
     app: opencti-connector
     connector: virustotal
 spec:
-  # replicas: 0 by default — scale to 1 when in investigation mode
-  # kubectl scale deployment opencti-connector-virustotal --replicas=1 -n opencti
+  # ⚠️ replicas: 0 by default — scale to 1 when in investigation mode.
+  #    CONNECTOR_AUTO=true below has NO EFFECT while replicas=0: with no pod the
+  #    connector never registers and auto-enrichment silently does nothing. Analysts
+  #    MUST scale this up before relying on VT enrichment:
+  #      kubectl scale deployment opencti-connector-virustotal --replicas=1 -n opencti
+  #    (Surfaced in the runbook so the scale-up step can't be missed.)
   replicas: 0
   selector:
     matchLabels:
@@ -23,9 +27,22 @@ spec:
       labels:
         app: opencti-connector-virustotal
     spec:
+      # Hardening — connectors parse untrusted external threat-intel data, so run
+      # them non-root, no privilege escalation, drop all caps, seccomp RuntimeDefault,
+      # and don't mount the SA token (connectors only talk to the OpenCTI API).
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: virustotal
-          image: opencti/connector-virustotal:6.9.5
+          image: opencti/connector-virustotal:6.9.5  # MUST match platform tag (helm-values.yaml)
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
           resources:
             requests:
               memory: "128Mi"

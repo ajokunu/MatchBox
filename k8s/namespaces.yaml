@@ -1,5 +1,20 @@
 # Kubernetes namespaces for MatchBox
-# Each SOC component gets its own namespace for isolation and resource management
+# Each SOC component gets its own namespace for isolation and resource management.
+#
+# Pod Security Standards (PSS) are enforced at the namespace level via the built-in
+# pod-security.kubernetes.io/* labels (k3s ships the admission plugin). This gives a
+# hard, non-advisory floor on top of the per-pod securityContexts:
+#   - opencti / thehive / monitoring -> "restricted" (no root, no privilege
+#     escalation, drop ALL caps, seccomp RuntimeDefault).
+#   - shared -> "baseline" enforce + "restricted" warn/audit. shared hosts the
+#     kernel-NFS server, which needs SYS_ADMIN/DAC_READ_SEARCH/SETPCAP and
+#     allowPrivilegeEscalation (see k8s/storage/nfs-server.yaml) — those violate
+#     "restricted" but are allowed by "baseline". The warn/audit level surfaces any
+#     OTHER workload that drifts below restricted. If NFS is later moved to its own
+#     namespace, tighten shared to "restricted" enforce.
+#   - wazuh -> "privileged". The Wazuh agent DaemonSet and dashboard init need
+#     host-level access (FIM/rootcheck, hostPath, hostNetwork), so this namespace is
+#     deliberately exempt from PSS restrictions.
 ---
 apiVersion: v1
 kind: Namespace
@@ -8,6 +23,11 @@ metadata:
   labels:
     app.kubernetes.io/part-of: matchbox-soc
     purpose: shared-infrastructure
+    # baseline enforced (NFS server needs caps that violate restricted); restricted
+    # surfaced as warn/audit so any non-NFS drift is visible.
+    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/audit: restricted
 ---
 apiVersion: v1
 kind: Namespace
@@ -16,6 +36,8 @@ metadata:
   labels:
     app.kubernetes.io/part-of: matchbox-soc
     purpose: siem-xdr
+    # privileged: agent DaemonSet (FIM/rootcheck, hostPath, hostNetwork) requires it.
+    pod-security.kubernetes.io/enforce: privileged
 ---
 apiVersion: v1
 kind: Namespace
@@ -24,6 +46,10 @@ metadata:
   labels:
     app.kubernetes.io/part-of: matchbox-soc
     purpose: incident-response
+    # restricted: also constrains Cortex-spawned analyzer Job pods to non-root/seccomp.
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/audit: restricted
 ---
 apiVersion: v1
 kind: Namespace
@@ -32,6 +58,9 @@ metadata:
   labels:
     app.kubernetes.io/part-of: matchbox-soc
     purpose: threat-intelligence
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/audit: restricted
 ---
 apiVersion: v1
 kind: Namespace
@@ -40,3 +69,6 @@ metadata:
   labels:
     app.kubernetes.io/part-of: matchbox-soc
     purpose: observability
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/audit: restricted

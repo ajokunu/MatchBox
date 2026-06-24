@@ -106,18 +106,38 @@ Critical for Cortex on Kubernetes:
 4. Analyst uses context to determine scope and response actions
 
 ### Configuration
-TheHive needs OpenCTI API URL and token in its application.conf:
+The OpenCTI <-> TheHive link is configured on the OpenCTI side via the official
+TheHive connectors (a stream connector pushing intel into TheHive, and an import
+connector pulling cases back). Set the TheHive URL plus its REST API key, and the
+OpenCTI URL plus the platform token (sourced from `soc-opencti-secrets`):
+
+```yaml
+# OpenCTI connector-thehive environment (k8s/opencti/connectors/)
+env:
+  - name: THEHIVE_URL
+    value: "http://thehive.thehive.svc.cluster.local:9000"
+  - name: THEHIVE_API_KEY
+    # TheHive's REST API key is NOT a deploy-time secret: it is generated in the
+    # TheHive UI after first login (Organisation → Users → create API key). It is
+    # therefore not held in soc-thehive-secrets (which carries only the deploy-time
+    # values play-secret and cortex-api-key). Create the key in-app, then inject it
+    # into this connector via your own Secret/env — e.g. add it as a key on the
+    # connector's Secret and reference it here, or set it on the connector Deployment.
+    valueFrom:
+      secretKeyRef:
+        name: opencti-connector-thehive   # connector-local Secret you create post-login
+        key: thehive-api-key
+  - name: OPENCTI_URL
+    value: "http://opencti.opencti.svc.cluster.local:4000"
+  - name: OPENCTI_TOKEN
+    valueFrom:
+      secretKeyRef:
+        name: soc-opencti-secrets
+        key: admin-token
 ```
-cortex {
-  servers = [
-    {
-      name = "Cortex"
-      url = "http://cortex.thehive.svc.cluster.local:9001"
-      auth { type = "bearer"; key = "CORTEX_API_KEY" }
-    }
-  ]
-}
-```
+
+> The Cortex connector config (used by TheHive to reach Cortex) is shown separately in
+> section 2 above — it is **not** the OpenCTI integration.
 
 ## 4. OpenCTI Connectors (Threat Feeds)
 

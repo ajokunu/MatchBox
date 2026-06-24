@@ -26,102 +26,62 @@ rosetta:
 
 # Mount the k8s manifests directory into the VM for easy access
 mounts:
-  - location: "~/MatchBox"
+  - location: "~/DonnieBot/SecurityCenter"
     mountPoint: "/home/{{.User}}/SecurityCenter"
     writable: false
 
-# Port forwarding — expose k3s API and service ports to macOS host
+# Port forwarding — expose k3s API and service ports to the macOS host.
+# hostIP is pinned to 127.0.0.1 so these bind to loopback only (never the LAN),
+# durable against any global Lima default override.
 portForwards:
   # k3s API server — for kubectl from macOS
   - guestPort: 6443
+    hostIP: "127.0.0.1"
     hostPort: 6443
     proto: tcp
   # HTTP ingress (Traefik)
   - guestPort: 80
+    hostIP: "127.0.0.1"
     hostPort: 80
     proto: tcp
   # HTTPS ingress (Traefik)
   - guestPort: 443
+    hostIP: "127.0.0.1"
     hostPort: 443
     proto: tcp
-  # Wazuh agent communication — for monitoring external hosts on LAN
+  # Wazuh agent communication
   - guestPort: 1514
+    hostIP: "127.0.0.1"
     hostPort: 1514
     proto: tcp
   # Wazuh agent registration
   - guestPort: 1515
+    hostIP: "127.0.0.1"
     hostPort: 1515
     proto: tcp
   # Wazuh API (for MCP server on macOS)
   - guestPort: 55000
+    hostIP: "127.0.0.1"
     hostPort: 55000
     proto: tcp
 
-# Provisioning script — runs on first boot
+# Per-VM provisioning parameters consumed by the shared provision-k3s.sh script.
+env:
+  SWAP_SIZE: "4G"
+  K3S_SYSTEM_RESERVED: "cpu=200m,memory=256Mi"
+  K3S_EVICTION_HARD: "memory.available<200Mi"
+  K3S_EVICTION_SOFT: "memory.available<500Mi"
+
+# Provisioning — runs on first boot. Shared with k3s-soc-minimal.yaml so version
+# pins / kubeconfig mode / hardening live in one place (provision-k3s.sh).
 provision:
   - mode: system
-    script: |
-      #!/bin/bash
-      set -eux
-
-      # --- Swap Configuration ---
-      # 4GB swap as safety net for memory pressure situations
-      if [ ! -f /swapfile ]; then
-        fallocate -l 4G /swapfile
-        chmod 600 /swapfile
-        mkswap /swapfile
-        swapon /swapfile
-        echo '/swapfile none swap sw 0 0' >> /etc/fstab
-      fi
-
-      # --- System Tuning ---
-      # Increase vm.max_map_count for OpenSearch (requires 262144+)
-      echo "vm.max_map_count=262144" >> /etc/sysctl.d/99-opensearch.conf
-      sysctl -w vm.max_map_count=262144
-
-      # Increase file descriptor limits for OpenSearch and Wazuh
-      echo "* soft nofile 65536" >> /etc/security/limits.conf
-      echo "* hard nofile 65536" >> /etc/security/limits.conf
-
-      # --- Install k3s ---
-      # --disable=traefik: We'll install our own Traefik with custom config
-      # --write-kubeconfig-mode=644: Allows non-root kubeconfig access
-      # --kubelet-arg: Set system-reserved to protect the node from OOM
-      curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="server \
-        --disable=traefik \
-        --write-kubeconfig-mode=644 \
-        --kubelet-arg=system-reserved=cpu=200m,memory=256Mi \
-        --kubelet-arg=eviction-hard=memory.available<200Mi \
-        --kubelet-arg=eviction-soft=memory.available<500Mi \
-        --kubelet-arg=eviction-soft-grace-period=memory.available=30s" \
-        sh -
-
-      # --- Install Helm ---
-      curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
-
-      # --- Export kubeconfig for Lima host access ---
-      mkdir -p /home/{{.User}}/.kube
-      cp /etc/rancher/k3s/k3s.yaml /home/{{.User}}/.kube/config
-      # Replace 127.0.0.1 with 0.0.0.0 so it works from macOS via port forward
-      sed -i 's/127.0.0.1/0.0.0.0/g' /home/{{.User}}/.kube/config
-      chown -R $(id -u {{.User}}):$(id -g {{.User}}) /home/{{.User}}/.kube
-
-      # --- Install NFS server packages (for Cortex shared filesystem) ---
-      apt-get update && apt-get install -y nfs-kernel-server
-
-      # --- Wait for k3s to be ready ---
-      until kubectl --kubeconfig=/etc/rancher/k3s/k3s.yaml get nodes 2>/dev/null; do
-        echo "Waiting for k3s..."
-        sleep 5
-      done
-      echo "k3s is ready!"
+    file: provision-k3s.sh
 
 # Copy kubeconfig to host for kubectl access from macOS
 copyToHost:
   - guest: "/etc/rancher/k3s/k3s.yaml"
     host: "{{.Dir}}/copied-from-guest/kubeconfig.yaml"
 
-# DNS — resolve *.soc.homelab.local inside the VM
-dns:
-  - hosts:
-      soc.homelab.local: "127.0.0.1"
+# Note: soc.homelab.local is resolved on the macOS HOST via /etc/hosts
+# (127.0.0.1 soc.homelab.local); ingress is reached through the 80/443 port-forwards.

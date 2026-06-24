@@ -13,6 +13,11 @@ metadata:
   name: nfs-data
   namespace: shared
 spec:
+  # SINGLE-NODE CONSTRAINT: this PVC uses local-path (node-local hostPath) and is
+  # ReadWriteOnce. The nfs-server Deployment that exports it must stay on the node
+  # that holds this volume — on a multi-node cluster the volume (and exported data)
+  # would be orphaned if the pod rescheduled elsewhere. For multi-node, convert
+  # nfs-server to a StatefulSet with a stable PVC or pin it with nodeSelector/affinity.
   accessModes:
     - ReadWriteOnce
   storageClassName: "local-path"
@@ -40,6 +45,7 @@ spec:
       containers:
         - name: nfs-ganesha
           image: erichough/nfs-server:2.2.1
+          imagePullPolicy: IfNotPresent  # third-party image; avoid re-pull churn
           resources:
             requests:
               memory: "64Mi"
@@ -57,8 +63,21 @@ spec:
           volumeMounts:
             - name: nfs-data
               mountPath: /exports/cortex
+          # Scoped capabilities instead of full privileged:true.
+          # Kernel NFS needs SYS_ADMIN (mount/export), DAC_READ_SEARCH (read any
+          # exported file), and SETPCAP (drop/raise caps during startup). This is a
+          # narrower grant than privileged. If the erichough/nfs-server image still
+          # requires privileged for kernel nfsd/rpc modules in this environment,
+          # restore privileged:true here AND relocate NFS to a dedicated PSS-privileged
+          # namespace so the exemption does not weaken the shared data namespace.
           securityContext:
-            privileged: true  # Required for NFS server
+            privileged: false
+            allowPrivilegeEscalation: true  # SYS_ADMIN-driven mounts need this
+            capabilities:
+              drop: ["ALL"]
+              add: ["SYS_ADMIN", "DAC_READ_SEARCH", "SETPCAP"]
+            seccompProfile:
+              type: RuntimeDefault
       volumes:
         - name: nfs-data
           persistentVolumeClaim:

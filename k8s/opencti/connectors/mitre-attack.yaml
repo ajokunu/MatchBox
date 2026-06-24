@@ -24,9 +24,20 @@ spec:
       template:
         spec:
           restartPolicy: Never
+          # Hardening — connectors parse untrusted external threat-intel data.
+          automountServiceAccountToken: false
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            seccompProfile:
+              type: RuntimeDefault
           containers:
             - name: mitre-attack
-              image: opencti/connector-mitre:6.9.5
+              image: opencti/connector-mitre:6.9.5  # MUST match platform tag (helm-values.yaml)
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop: ["ALL"]
               resources:
                 requests:
                   memory: "128Mi"
@@ -53,4 +64,8 @@ spec:
                 - name: CONNECTOR_LOG_LEVEL
                   value: "info"
                 - name: MITRE_ENTERPRISE_FILE_URL
-                  value: "https://raw.githubusercontent.com/mitre/cti/master/enterprise-attack/enterprise-attack.json"
+                  # Pin to a tagged ATT&CK release rather than the mutable `master`
+                  # branch (supply-chain hygiene): any upstream change to `master`
+                  # would otherwise be auto-ingested into the TI knowledge base.
+                  # Bump this tag deliberately when adopting a new ATT&CK version.
+                  value: "https://raw.githubusercontent.com/mitre/cti/ATT%26CK-v15.1/enterprise-attack/enterprise-attack.json"

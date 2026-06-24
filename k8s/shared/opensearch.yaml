@@ -36,12 +36,28 @@ persistence:
   size: "40Gi"
   storageClass: "local-path"  # k3s built-in provisioner
 
-# Security — enabled with internal users for service-to-service auth
+# Security — enabled with a CUSTOM internal_users.yml so the admin password is the
+# REAL secret (bcrypt of soc-shared-secrets/opensearch-password), NOT the chart's
+# baked-in demo "admin" password.
+#
+# WAVE-2 HARDENING (finding: default admin password). Because we set
+# DISABLE_INSTALL_DEMO_CONFIG=true (to keep our own TLS certs), the chart's
+# OPENSEARCH_INITIAL_ADMIN_PASSWORD is never applied — the security index would
+# otherwise fall back to the demo internal_users.yml whose admin hash is public.
+# Pointing securityConfigSecret at our own Secret makes the security plugin load
+# a custom internal_users.yml at init (allow_default_init_securityindex: true).
+#
+# DEPENDENCY (scripts lane): a Secret named 'opensearch-securityconfig' in ns
+# `shared` must exist BEFORE this chart installs. It carries internal_users.yml
+# (admin hash = bcrypt of opensearch-password) and is applied to a RUNNING cluster
+# by a `securityadmin.sh` runner so rotations land in the .opendistro_security index.
+# dataComplete: true tells the chart this Secret provides the COMPLETE securityconfig
+# (all .yml files), so it mounts it wholesale instead of layering on chart defaults.
 securityConfig:
   enabled: true
   config:
-    securityConfigSecret: ""  # Uses default internal_users.yml
-    dataComplete: false
+    securityConfigSecret: "opensearch-securityconfig"  # custom internal_users.yml (real admin hash)
+    dataComplete: true  # Secret supplies the full securityconfig bundle
 
 # Mount custom TLS certs with correct SANs for K8s service hostname
 secretMounts:
@@ -68,6 +84,10 @@ config:
   opensearch.yml: |
     cluster.name: matchbox-soc
     plugins.index_state_management.enabled: true
+    # Report version 7.10.2 to ES7 clients. Wazuh's bundled Filebeat (7.10.2) reads
+    # OpenSearch's native "2.19.1" as ancient Elasticsearch 2.x and emits the removed
+    # `_type` bulk field -> 400 errors. This flag makes alert indexing work.
+    compatibility.override_main_response_version: true
     plugins.security.ssl.transport.pemcert_filepath: certs/esnode.pem
     plugins.security.ssl.transport.pemkey_filepath: certs/esnode-key.pem
     plugins.security.ssl.transport.pemtrustedcas_filepath: certs/root-ca.pem

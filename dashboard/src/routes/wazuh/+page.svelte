@@ -1,238 +1,161 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
-  import { Shield, ExternalLink, RefreshCw, TriangleAlert, Users, Activity, CircleCheck, CircleX } from 'lucide-svelte';
-  import StatBox from '$lib/components/StatBox.svelte';
+import ServiceDetailLayout from '$lib/components/ServiceDetailLayout.svelte';
+import StatBox from '$lib/components/StatBox.svelte';
+import { LOADING_PLACEHOLDER, publicUrls } from '$lib/config';
+import { CircleCheck, CircleX, Shield, TriangleAlert, Users } from 'lucide-svelte';
 
-  interface Agent {
-    id: string;
-    name: string;
-    status: string;
-    os: string;
-    ip: string;
-    version: string;
-    registered: string;
-  }
+interface Agent {
+  id: string;
+  name: string;
+  status: string;
+  os: string;
+  ip: string;
+  version: string;
+  registered: string;
+}
 
-  interface ScaPolicy {
-    name: string;
-    score: number;
-    pass: number;
-    fail: number;
-    invalid: number;
-    notApplicable: number;
-    total: number;
-    policyId: string;
-  }
+interface ScaPolicy {
+  name: string;
+  score: number;
+  pass: number;
+  fail: number;
+  invalid: number;
+  notApplicable: number;
+  total: number;
+  policyId: string;
+}
 
-  let data = $state<Record<string, unknown> | null>(null);
-  let error = $state('');
-  let loading = $state(true);
-
-  let agents = $derived((data?.agents as Agent[]) ?? []);
-  let sca = $derived((data?.sca as ScaPolicy[]) ?? []);
-
-  async function fetchData() {
-    loading = true;
-    error = '';
-    try {
-      const resp = await fetch('/api/wazuh');
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-      data = await resp.json();
-    } catch (err) {
-      error = (err as Error).message;
-      data = null;
-    } finally {
-      loading = false;
-    }
-  }
-
-  onMount(() => {
-    fetchData();
-    const interval = setInterval(fetchData, 60_000);
-    return () => clearInterval(interval);
-  });
+// External link host/port now come from PUBLIC_* config (were hardcoded localhost).
+const wazuhAppUrl = `${publicUrls.wazuhDashboard}/app/wazuh`;
+// Display-only host strings derived from config (was hardcoded "localhost:5601"/":55000").
+const dashboardHost = publicUrls.wazuhDashboard.replace(/^https?:\/\//, '');
 </script>
 
-<div class="wazuh-page">
-  <div class="page-bar">
-    <div class="page-title">
-      <Shield size={18} strokeWidth={1.8} />
-      <span>Wazuh SIEM / XDR</span>
+<ServiceDetailLayout
+  title="Wazuh SIEM / XDR"
+  icon="Shield"
+  endpoint="/api/wazuh"
+  externalUrl={wazuhAppUrl}
+  externalLabel="Open Wazuh Dashboard"
+  errorLabel="Could not reach Wazuh API"
+  connectingLabel="Connecting to Wazuh API..."
+  errorHint="Ensure port-forward is running: kubectl port-forward -n wazuh svc/wazuh-manager 55000:55000"
+>
+  {#snippet children(data)}
+    {@const agents = (data.agents as Agent[]) ?? []}
+    {@const sca = (data.sca as ScaPolicy[]) ?? []}
+    <!-- Top stats -->
+    <div class="stats-row">
+      <div class="stat-large">
+        <Shield size={20} aria-hidden="true" />
+        <div>
+          <div class="stat-lg-value accent">{data.totalAlerts ?? 0}</div>
+          <div class="stat-lg-label">Total Alerts</div>
+        </div>
+      </div>
+      <div class="stat-large">
+        <TriangleAlert size={20} aria-hidden="true" />
+        <div>
+          <div class="stat-lg-value accent">{data.criticalAlerts ?? 0}</div>
+          <div class="stat-lg-label">Critical (lvl 10+)</div>
+        </div>
+      </div>
+      <div class="stat-large">
+        <Users size={20} aria-hidden="true" />
+        <div>
+          <div class="stat-lg-value green">{data.activeAgents ?? 0}/{data.totalAgents ?? 0}</div>
+          <div class="stat-lg-label">Agents (active/total)</div>
+        </div>
+      </div>
     </div>
-    <div class="page-actions">
-      <button class="action-btn" onclick={fetchData}>
-        <RefreshCw size={12} />
-        <span>Refresh</span>
-      </button>
-      <a href="https://localhost:5601/app/wazuh" target="_blank" rel="noopener" class="action-btn accent">
-        <ExternalLink size={12} />
-        <span>Open Wazuh Dashboard</span>
-      </a>
+
+    <div class="stats-row-sm">
+      <StatBox label="Version" value={String(data.version ?? LOADING_PLACEHOLDER)} />
+      <StatBox label="Rules Loaded" value={Number(data.totalRules ?? 0)} color="accent" />
+      <StatBox label="Server API" value="port 55000" />
+      <StatBox label="Dashboard" value={dashboardHost} />
     </div>
-  </div>
 
-  <div class="page-content">
-    {#if loading && !data}
-      <div class="center-msg">
-        <Activity size={24} class="spinner" />
-        <span>Connecting to Wazuh API...</span>
-      </div>
-    {:else if error && !data}
-      <div class="center-msg error">
-        <TriangleAlert size={24} />
-        <span>Could not reach Wazuh API</span>
-        <span class="error-detail">{error}</span>
-        <span class="error-hint">Ensure port-forward is running: kubectl port-forward -n wazuh svc/wazuh-manager 55000:55000</span>
-      </div>
-    {:else if data}
-      <!-- Top stats -->
-      <div class="stats-row">
-        <div class="stat-large">
-          <Shield size={20} />
-          <div>
-            <div class="stat-lg-value accent">{data.totalAlerts ?? 0}</div>
-            <div class="stat-lg-label">Total Alerts</div>
-          </div>
-        </div>
-        <div class="stat-large">
-          <TriangleAlert size={20} />
-          <div>
-            <div class="stat-lg-value accent">{data.criticalAlerts ?? 0}</div>
-            <div class="stat-lg-label">Critical (lvl 10+)</div>
-          </div>
-        </div>
-        <div class="stat-large">
-          <Users size={20} />
-          <div>
-            <div class="stat-lg-value green">{data.activeAgents ?? 0}/{data.totalAgents ?? 0}</div>
-            <div class="stat-lg-label">Agents (active/total)</div>
-          </div>
-        </div>
-      </div>
-
-      <div class="stats-row-sm">
-        <StatBox label="Version" value={String(data.version ?? '...')} />
-        <StatBox label="Rules Loaded" value={data.totalRules ?? '...'} color="var(--accent)" />
-        <StatBox label="API" value="localhost:55000" />
-        <StatBox label="Dashboard" value="localhost:5601" />
-      </div>
-
-      <!-- Agents table -->
-      <div class="section-title">Registered Agents</div>
-      <div class="table-card">
-        <table>
-          <thead>
+    <!-- Agents table -->
+    <div class="section-title">Registered Agents</div>
+    <div class="table-card">
+      <table>
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Name</th>
+            <th>Status</th>
+            <th>OS</th>
+            <th>IP</th>
+            <th>Version</th>
+          </tr>
+        </thead>
+        <tbody>
+          {#each agents as agent}
             <tr>
-              <th>ID</th>
-              <th>Name</th>
-              <th>Status</th>
-              <th>OS</th>
-              <th>IP</th>
-              <th>Version</th>
+              <td class="mono">{agent.id}</td>
+              <td class="bold">{agent.name}</td>
+              <td>
+                <span class="status-badge" class:online={agent.status === 'active'} class:offline={agent.status !== 'active'}>
+                  {#if agent.status === 'active'}
+                    <CircleCheck size={10} aria-hidden="true" />
+                  {:else}
+                    <CircleX size={10} aria-hidden="true" />
+                  {/if}
+                  {agent.status}
+                </span>
+              </td>
+              <td>{agent.os}</td>
+              <td class="mono">{agent.ip}</td>
+              <td>{agent.version}</td>
             </tr>
-          </thead>
-          <tbody>
-            {#each agents as agent}
-              <tr>
-                <td class="mono">{agent.id}</td>
-                <td class="bold">{agent.name}</td>
-                <td>
-                  <span class="status-badge" class:online={agent.status === 'active'} class:offline={agent.status !== 'active'}>
-                    {#if agent.status === 'active'}
-                      <CircleCheck size={10} />
-                    {:else}
-                      <CircleX size={10} />
-                    {/if}
-                    {agent.status}
-                  </span>
-                </td>
-                <td>{agent.os}</td>
-                <td class="mono">{agent.ip}</td>
-                <td>{agent.version}</td>
-              </tr>
-            {/each}
-            {#if agents.length === 0}
-              <tr><td colspan="6" class="empty-row">No agents registered</td></tr>
-            {/if}
-          </tbody>
-        </table>
-      </div>
+          {/each}
+          {#if agents.length === 0}
+            <tr><td colspan="6" class="empty-row">No agents registered</td></tr>
+          {/if}
+        </tbody>
+      </table>
+    </div>
 
-      <!-- SCA Compliance -->
-      {#if sca.length > 0}
-        <div class="section-title">Security Configuration Assessment</div>
-        {#each sca as policy}
-          {@const passPct = policy.total > 0 ? (policy.pass / policy.total) * 100 : 0}
-          {@const failPct = policy.total > 0 ? (policy.fail / policy.total) * 100 : 0}
-          {@const invalidPct = policy.total > 0 ? (policy.invalid / policy.total) * 100 : 0}
-          {@const naPct = policy.total > 0 ? (policy.notApplicable / policy.total) * 100 : 0}
-          <div class="sca-card">
-            <div class="sca-header">
-              <span class="sca-name">{policy.name}</span>
-              <span class="sca-score" class:good={policy.score >= 70} class:warn={policy.score >= 40 && policy.score < 70} class:bad={policy.score < 40}>
-                {policy.score}%
-              </span>
-            </div>
-            <div class="sca-bar-segmented">
-              <div class="sca-seg pass" style="width: {passPct}%" title="{policy.pass} passed"></div>
-              <div class="sca-seg fail" style="width: {failPct}%" title="{policy.fail} failed"></div>
-              <div class="sca-seg invalid" style="width: {invalidPct}%" title="{policy.invalid} invalid"></div>
-              <div class="sca-seg na" style="width: {naPct}%" title="{policy.notApplicable} N/A"></div>
-            </div>
-            <div class="sca-details">
-              <span class="sca-stat pass">{policy.pass} passed</span>
-              <span class="sca-stat fail">{policy.fail} failed</span>
-              {#if policy.invalid > 0}
-                <span class="sca-stat invalid">{policy.invalid} invalid</span>
-              {/if}
-              {#if policy.notApplicable > 0}
-                <span class="sca-stat na">{policy.notApplicable} N/A</span>
-              {/if}
-              <span class="sca-stat">{policy.total} total</span>
-            </div>
+    <!-- SCA Compliance -->
+    {#if sca.length > 0}
+      <div class="section-title">Security Configuration Assessment</div>
+      {#each sca as policy}
+        {@const passPct = policy.total > 0 ? (policy.pass / policy.total) * 100 : 0}
+        {@const failPct = policy.total > 0 ? (policy.fail / policy.total) * 100 : 0}
+        {@const invalidPct = policy.total > 0 ? (policy.invalid / policy.total) * 100 : 0}
+        {@const naPct = policy.total > 0 ? (policy.notApplicable / policy.total) * 100 : 0}
+        <div class="sca-card">
+          <div class="sca-header">
+            <span class="sca-name">{policy.name}</span>
+            <span class="sca-score" class:good={policy.score >= 70} class:warn={policy.score >= 40 && policy.score < 70} class:bad={policy.score < 40}>
+              {policy.score}%
+            </span>
           </div>
-        {/each}
-      {/if}
+          <div class="sca-bar-segmented">
+            <div class="sca-seg pass" style="width: {passPct}%" title="{policy.pass} passed"></div>
+            <div class="sca-seg fail" style="width: {failPct}%" title="{policy.fail} failed"></div>
+            <div class="sca-seg invalid" style="width: {invalidPct}%" title="{policy.invalid} invalid"></div>
+            <div class="sca-seg na" style="width: {naPct}%" title="{policy.notApplicable} N/A"></div>
+          </div>
+          <div class="sca-details">
+            <span class="sca-stat pass">{policy.pass} passed</span>
+            <span class="sca-stat fail">{policy.fail} failed</span>
+            {#if policy.invalid > 0}
+              <span class="sca-stat invalid">{policy.invalid} invalid</span>
+            {/if}
+            {#if policy.notApplicable > 0}
+              <span class="sca-stat na">{policy.notApplicable} N/A</span>
+            {/if}
+            <span class="sca-stat">{policy.total} total</span>
+          </div>
+        </div>
+      {/each}
     {/if}
-  </div>
-</div>
+  {/snippet}
+</ServiceDetailLayout>
 
 <style>
-  .wazuh-page { display: flex; flex-direction: column; height: 100%; }
-  .page-bar {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 8px 16px; background: var(--bg-secondary);
-    border-bottom: 1px solid var(--border); flex-shrink: 0;
-  }
-  .page-title {
-    display: flex; align-items: center; gap: 8px;
-    font-size: 13px; font-weight: 600; color: var(--text-primary);
-  }
-  .page-actions { display: flex; gap: 6px; }
-  .action-btn {
-    display: flex; align-items: center; gap: 4px;
-    padding: 5px 12px; font-size: 10px;
-    background: var(--bg-card); border: 1px solid var(--border);
-    border-radius: 4px; color: var(--text-secondary);
-    cursor: pointer; font-family: inherit; transition: all 0.2s;
-    text-decoration: none;
-  }
-  .action-btn:hover { border-color: var(--accent); color: var(--text-primary); }
-  .action-btn.accent { background: var(--accent); border-color: var(--accent); color: #fdf6e3; }
-  .action-btn.accent:hover { opacity: 0.9; }
-  .page-content { flex: 1; padding: 16px; overflow-y: auto; background: var(--bg-primary); }
-  .center-msg {
-    display: flex; flex-direction: column; align-items: center;
-    justify-content: center; height: 200px; gap: 8px;
-    color: var(--text-dim); font-size: 12px;
-  }
-  .center-msg.error { color: var(--accent); }
-  .error-detail { font-size: 10px; color: var(--text-dim); }
-  .error-hint {
-    font-size: 9px; color: var(--text-dim); margin-top: 8px;
-    background: var(--bg-card); padding: 8px 12px; border-radius: 4px;
-    border: 1px solid var(--border); font-family: inherit;
-  }
   .stats-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 12px; }
   .stats-row-sm { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 16px; }
   .stat-large {
@@ -303,5 +226,4 @@
   .sca-stat.fail { color: var(--accent); }
   .sca-stat.invalid { color: var(--accent-yellow); }
   .sca-stat.na { color: var(--text-dim); opacity: 0.7; }
-  :global(.spinner) { animation: spin 1s linear infinite; color: var(--accent); }
 </style>

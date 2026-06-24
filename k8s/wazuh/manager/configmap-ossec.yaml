@@ -6,7 +6,9 @@ metadata:
   name: wazuh-manager-config
   namespace: wazuh
   labels:
-    app: wazuh-manager
+    app.kubernetes.io/name: wazuh-manager
+    app.kubernetes.io/component: config
+    app.kubernetes.io/part-of: matchbox-soc
 data:
   ossec.conf: |
     <ossec_config>
@@ -19,11 +21,20 @@ data:
         <logall_json>no</logall_json>
       </global>
 
-      <!-- Agent enrollment -->
+      <!-- Agent enrollment (authd on 1515) -->
+      <!-- Hardening (WAVE-2, finding 3): password-based enrollment is now ENABLED.
+           use_password=yes makes authd require the shared registration password seeded
+           into /var/ossec/etc/authd.pass by the manager initContainer (from
+           soc-wazuh-secrets/registration-password); the agent DaemonSet presents the
+           same value via WAZUH_REGISTRATION_PASSWORD. This stops any host that can reach
+           1515 from silently enrolling. use_source_ip=yes additionally binds each
+           registration to its source IP (a stolen key cannot be replayed from another
+           host), layered on the tight 1515 NetworkPolicy (node ipBlock only). -->
       <auth>
         <disabled>no</disabled>
         <port>1515</port>
-        <use_source_ip>no</use_source_ip>
+        <use_source_ip>yes</use_source_ip>
+        <use_password>yes</use_password>
         <purge>yes</purge>
       </auth>
 

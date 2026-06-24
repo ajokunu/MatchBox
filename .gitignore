@@ -33,4 +33,10 @@ kubeconfig.yaml
 .claude/
 
 # Secrets (use secrets.yaml.example as template)
+# Plaintext secrets stay local; commit k8s/shared/secrets.enc.yaml (SOPS-encrypted).
 k8s/shared/secrets.yaml
+
+# SOPS / age private keys — never commit. The key lives outside the repo by default
+# (~/.config/sops/age/keys.txt); these patterns are defensive in case it's relocated.
+*.agekey
+keys.txt

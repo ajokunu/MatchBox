@@ -1,0 +1,34 @@
+{
+  "name": "@matchbox/soc",
+  "version": "1.7.0",
+  "private": true,
+  "description": "MatchBox Home SOC — npm workspaces root for the MCP servers and dashboard",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "//workspaces": "Order matters for 'build': mcp-shared must compile before its consumers. npm runs --workspaces in package-graph order, and the shared package is declared first.",
+  "workspaces": [
+    "mcp-servers/shared",
+    "mcp-servers/wazuh-mcp",
+    "mcp-servers/thehive-mcp",
+    "mcp-servers/opencti-mcp",
+    "dashboard"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "//lint": "Repo-wide Biome lint+format check (config in biome.json). 'lint' is the gate; 'typecheck' keeps the per-workspace tsc --noEmit pass since Biome does not type-check.",
+    "lint": "biome check .",
+    "format": "biome format --write .",
+    "typecheck": "npm run typecheck --workspaces --if-present"
+  },
+  "//overrides": "Force a single Vite 6 across the tree. vitest would otherwise hoist its own Vite 5 to the root, leaving two Vite copies whose Plugin types are nominally incompatible — which breaks svelte-check (dual @sveltejs/vite-plugin-svelte plugin identity).",
+  "overrides": {
+    "vite": "^6.4.1"
+  },
+  "//devDependencies": "Biome pinned to the same minor as biome.json's $schema (1.9.4) so the config and CLI agree on rule names.",
+  "devDependencies": {
+    "@biomejs/biome": "1.9.4"
+  }
+}

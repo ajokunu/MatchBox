@@ -1,0 +1,28 @@
+# EditorConfig — consistent whitespace/encoding across editors.
+# https://editorconfig.org
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 2
+
+# Makefiles require literal tabs for recipe lines.
+[Makefile]
+indent_style = tab
+
+# Shell scripts: 2-space indent (matches scripts/*.sh house style).
+[*.sh]
+indent_style = space
+indent_size = 2
+
+# Markdown: keep trailing whitespace (it is significant for hard line breaks).
+[*.md]
+trim_trailing_whitespace = false
+
+# Go-style/Helm templates and YAML stay at 2 spaces (already the default above).
+[*.{yaml,yml}]
+indent_size = 2

@@ -13,27 +13,33 @@ Home SOC (Security Operations Center) running on lightweight Kubernetes (k3s) vi
 - **Storage:** Shared OpenSearch, Redis, RabbitMQ, MinIO, NFS
 
 ## Hardware Constraint
-Mac Mini M4 with 16GB RAM. Slim configuration with phased startup:
-- Always on: k3s, OpenSearch, Wazuh, Monitoring (~7.1GB steady state)
-- On-demand: TheHive, Cortex, OpenCTI (scale up during investigation, ~10.5GB total)
+Mac Mini M4 with 16GB RAM. Slim configuration with phased startup (RAM figures are
+authoritative in `docs/VERSIONS.md` / `docs/resource-requirements.md`):
+- Always on: k3s, OpenSearch, Wazuh, Traefik (~3.2GB steady state)
+- On-demand: TheHive, Cortex, OpenCTI (scale up during investigation, ~5.8GB)
+- Full load: + Prometheus/Grafana + active connectors (~7.2GB; under the 10GiB VM)
 - Scheduled: Threat intel connectors as CronJobs (nightly/weekly)
 
 ## Security
-- All credentials in K8s Secrets (template: `k8s/shared/secrets.yaml`), never hardcoded
+- All credentials in K8s Secrets, encrypted at rest with SOPS+age (`k8s/shared/secrets.enc.yaml`); plaintext `secrets.yaml` is gitignored. Never hardcoded.
 - OpenSearch security enabled with internal user auth
 - TLS 1.2+ on Traefik IngressRoutes with ECDHE cipher suites (self-signed cert: `soc-tls-cert`)
-- cert-manager ClusterIssuer for automated cert generation (`k8s/ingress/self-signed-issuer.yaml`)
-- NetworkPolicies: default-deny ingress + 18 explicit allow rules across 5 namespaces
+- TLS PKI via `scripts/generate-certs.sh` (openssl, 0 RAM) — cert-manager is NOT used (documented optional upgrade only)
+- NetworkPolicies: 34 total = 5 default-deny-ingress + 5 default-deny-egress + 24 explicit allow, across 5 namespaces (see `docs/VERSIONS.md`)
 - Redis auth enabled, NFS root_squash, Cortex RBAC with PVC verbs
 - All container images pinned (no `:latest` tags)
 - MCP servers: 10s request timeouts, 50KB response truncation, `[WRITE]` annotations on mutations
-- Compliance audited against ISO 27001, NIST 800-53, and OWASP Top 10 for LLMs
+- Designed with reference to ISO 27001, NIST 800-53, and OWASP Top 10 for LLMs (control citations are inline; no formal third-party audit has been performed)
 
-## Dashboard Integration
-SOC content is integrated into the MatchBox dashboard at `http://localhost:3099`:
-- **4 tabs**: Overview, Architecture, Components, MCP Servers
-- Standalone version: `public/index.html`
-- Integrated source: `../ServiceMonitor/public/index.html`
+## Dashboard
+The MatchBox SOC Command Center is a SvelteKit app in `dashboard/`, served on port 5173
+(`vite dev --port 5173`):
+- **Pages**: an overview plus 5 per-service deep-dives (`wazuh`, `grafana`, `opencti`,
+  `thehive`, `cortex`) under `dashboard/src/routes/`
+- **Data**: server routes under `dashboard/src/routes/api/*` proxy each service's API
+  (config via SvelteKit `$env/dynamic/private`, i.e. `dashboard/.env`)
+- **Theme**: Solarized light/dark toggle (`dashboard/src/app.css`), synced with embedded Grafana
+- Run: `cp dashboard/.env.example dashboard/.env && cd dashboard && npm install && npm run dev`
 
 ## Directory Structure
 ```
@@ -59,22 +65,32 @@ SecurityCenter/
 ```
 
 ## Common Commands
+Common workflows are wrapped by the root `Makefile` (run `make help` for the full list);
+the underlying scripts can still be called directly.
+
 ```bash
 # Start Lima VM + k3s
 limactl start ./lima/k3s-soc.yaml
 export KUBECONFIG=$(limactl list k3s-soc --format '{{.Dir}}/copied-from-guest/kubeconfig.yaml')
 
-# Deploy full stack
-./scripts/deploy-stack.sh
+# Secrets: init age key + encrypt (one-time), then deploy decrypts at apply time
+make secrets-init        # wraps scripts/setup-sops.sh
+./scripts/generate-certs.sh   # TLS PEMs + K8s cert Secrets (run before deploy)
+
+# Deploy full stack (decrypts secrets, applies in order)
+make deploy              # or: ./scripts/deploy-stack.sh all
+
+# Build / lint / test the TS workspaces (MCP servers + dashboard)
+make build && make lint && make test
 
 # Check cluster health
 kubectl get pods --all-namespaces
 
 # Tear down
-./scripts/teardown.sh
+make teardown            # or: ./scripts/teardown.sh
 
 # Run end-to-end test
-./scripts/test-flow.sh
+make e2e                 # or: ./scripts/test-flow.sh
 ```
 
 ## Namespaces
@@ -89,12 +105,12 @@ kubectl get pods --all-namespaces
 - Helm values files are in each component's k8s/ subdirectory
 - Resource limits are mandatory on every pod (slim config)
 - Changes are logged in CHANGELOG.md before committing
-- Sensitive values (API keys, passwords) go in Kubernetes Secrets, never in manifests
-- Use `.env.example` files to document required environment variables
+- Sensitive values (API keys, passwords) go in Kubernetes Secrets (SOPS+age encrypted in `secrets.enc.yaml`), never in manifests
+- Use `.env.example` files to document required environment variables (repo-root for MCP servers, `dashboard/.env.example` for the dashboard)
 
 ## MCP Servers
 Three custom MCP servers provide Claude Code integration:
-- `wazuh-mcp` — Query alerts, agents, vulnerabilities via Wazuh REST API
+- `wazuh-mcp` — Query agents/rules/decoders via the Wazuh Server API (55000) and alerts/vulnerabilities via the Wazuh Indexer (9200)
 - `thehive-mcp` — Manage cases, observables, analyzers via TheHive API
 - `opencti-mcp` — Search indicators, reports, attack patterns via OpenCTI GraphQL API
 

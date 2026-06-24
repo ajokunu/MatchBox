@@ -1,27 +1,28 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
-  import { Sun, Moon } from 'lucide-svelte';
-  import StatusDot from './StatusDot.svelte';
-  import { healthStore, themeStore, toggleTheme } from '$lib/stores';
-  import { services } from '$lib/config';
+import { services } from '$lib/config';
+import { healthStore, themeStore, toggleTheme } from '$lib/stores';
+import { Moon, Sun } from 'lucide-svelte';
+import { onMount } from 'svelte';
+import StatusDot from './StatusDot.svelte';
 
-  let clock = $state('--:--:-- UTC');
-  let isDark = $derived($themeStore === 'dark');
+let clock = $state('--:--:-- UTC');
+let isDark = $derived($themeStore === 'dark');
 
-  onMount(() => {
-    document.documentElement.setAttribute('data-theme', $themeStore);
-    const update = () => {
-      clock = new Date().toISOString().slice(11, 19) + ' UTC';
-    };
-    update();
-    const interval = setInterval(update, 1000);
-    return () => clearInterval(interval);
-  });
+// NOTE: document-level `data-theme` application now lives in +layout.svelte (one place)
+// — a child component is the wrong layer to own the document theme attribute.
+onMount(() => {
+  const update = () => {
+    clock = `${new Date().toISOString().slice(11, 19)} UTC`;
+  };
+  update();
+  const interval = setInterval(update, 1000);
+  return () => clearInterval(interval);
+});
 </script>
 
 <header class="header">
   <div class="logo-section">
-    <svg class="logo-svg" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
+    <svg class="logo-svg" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="MatchBox SOC logo">
       <defs>
         <linearGradient id="flame" x1="0" y1="1" x2="0" y2="0">
           <stop offset="0%" stop-color="var(--accent)"/>
@@ -48,7 +49,7 @@
         href="/{svc.id}"
         title="{svc.name} - {health?.status ?? 'checking'}"
       >
-        <StatusDot status={health?.status ?? 'checking'} />
+        <StatusDot status={health?.status ?? 'checking'} label={svc.name} />
         <span>{svc.name}</span>
       </a>
     {/each}

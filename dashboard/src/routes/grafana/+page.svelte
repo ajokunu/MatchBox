@@ -1,5 +1,5 @@
 <script lang="ts">
-  import GrafanaEmbed from '$lib/components/GrafanaEmbed.svelte';
+import GrafanaEmbed from '$lib/components/GrafanaEmbed.svelte';
 </script>
 
 <div class="grafana-page">

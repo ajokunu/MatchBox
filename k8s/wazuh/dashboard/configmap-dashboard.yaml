@@ -7,7 +7,9 @@ metadata:
   name: wazuh-dashboard-config
   namespace: wazuh
   labels:
-    app: wazuh-dashboard
+    app.kubernetes.io/name: wazuh-dashboard
+    app.kubernetes.io/component: config
+    app.kubernetes.io/part-of: matchbox-soc
 data:
   opensearch_dashboards.yml: |
     server.host: "0.0.0.0"
@@ -21,7 +23,10 @@ data:
     # Credentials are injected via keystore by the entrypoint script
     # using DASHBOARD_USERNAME / DASHBOARD_PASSWORD env vars
     opensearch.hosts: ["https://opensearch-cluster-master.shared.svc.cluster.local:9200"]
-    opensearch.ssl.verificationMode: none
+    # Verify the OpenSearch server certificate against the mounted SOC CA.
+    # 'none' previously allowed in-cluster MITM of the admin OpenSearch session.
+    opensearch.ssl.verificationMode: full
+    opensearch.ssl.certificateAuthorities: ["/usr/share/wazuh-dashboard/config/certs/root-ca.pem"]
     opensearch.requestHeadersAllowlist: ["securitytenant", "Authorization"]
 
     # Security plugin

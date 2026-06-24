@@ -6,10 +6,18 @@ This script is called by the Wazuh Manager's active response system when an
 alert meets the configured threshold (level 7+). It creates a TheHive alert
 with extracted observables for analyst triage.
 
-Deployed as a ConfigMap and mounted into the Wazuh Manager pod at:
-  /var/ossec/integrations/custom-w2thive.py
+⚠️ STATUS: NOT YET WIRED INTO THE DEPLOYED STACK. This script is the intended
+Wazuh→TheHive bridge but nothing currently deploys it: no ConfigMap wraps it, the
+Wazuh Manager pod does not mount it, and ossec.conf has no <integration> stanza
+referencing custom-w2thive. To activate it (k8s-wazuh lane work):
+  1. Package this file as a ConfigMap and mount it at
+     /var/ossec/integrations/custom-w2thive.py (mode 0755, executable).
+  2. Add an <integration> block to configmap-ossec.yaml, injecting the TheHive API
+     key from a Secret.
+  3. Apply both in deploy_wazuh().
+Until then this is reference/future work — do not assume the pipeline runs.
 
-Wazuh calls this script with:
+When wired, Wazuh calls this script with:
   python3 custom-w2thive.py <alert_file> <api_key> <hook_url>
 """
 
@@ -116,6 +124,13 @@ def create_thehive_alert(hook_url: str, api_key: str, alert: dict):
     agent = alert.get("agent", {})
     level = rule.get("level", 5)
 
+    # Guard against explicit JSON null. `.get(key, default)` only uses the default
+    # when the key is ABSENT; if the alert contains "full_log": null (or
+    # "groups": null), .get returns None and None[:500] / ', '.join(None) raises.
+    # `(value or fallback)` falls back for both missing AND null values.
+    groups = rule.get("groups") or []
+    full_log = (alert.get("full_log") or "N/A")[:500]
+
     # Build TheHive alert payload
     thehive_alert = {
         "title": f"[Wazuh] {rule.get('description', 'Unknown Alert')}",
@@ -123,25 +138,23 @@ def create_thehive_alert(hook_url: str, api_key: str, alert: dict):
             f"**Wazuh Alert (Level {level})**\n\n"
             f"- **Rule ID:** {rule.get('id', 'N/A')}\n"
             f"- **Rule Description:** {rule.get('description', 'N/A')}\n"
-            f"- **Groups:** {', '.join(rule.get('groups', []))}\n"
+            f"- **Groups:** {', '.join(groups)}\n"
             f"- **Agent:** {agent.get('name', 'N/A')} ({agent.get('id', 'N/A')})\n"
             f"- **Timestamp:** {alert.get('timestamp', 'N/A')}\n"
-            f"- **Full Log:** {alert.get('full_log', 'N/A')[:500]}\n"
+            f"- **Full Log:** {full_log}\n"
         ),
         "type": "wazuh-alert",
         "source": "Wazuh",
         "sourceRef": f"wazuh-{rule.get('id', '0')}-{alert.get('id', '0')}",
         "severity": get_severity(level),
-        "tags": ["wazuh", f"level:{level}"] + rule.get("groups", []),
+        "tags": ["wazuh", f"level:{level}"] + groups,
         "observables": extract_observables(alert),
     }
 
-    # MITRE ATT&CK tags if present
-    mitre = rule.get("mitre", {})
-    if mitre.get("id"):
-        thehive_alert["tags"].extend(
-            [f"mitre:{tid}" for tid in mitre["id"]]
-        )
+    # MITRE ATT&CK tags if present (mitre or mitre['id'] may be null)
+    mitre = rule.get("mitre") or {}
+    for tid in (mitre.get("id") or []):
+        thehive_alert["tags"].append(f"mitre:{tid}")
 
     # Send to TheHive
     headers = {

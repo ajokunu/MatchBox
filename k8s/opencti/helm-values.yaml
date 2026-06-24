@@ -1,16 +1,29 @@
 # OpenCTI Helm Values — Cyber Threat Intelligence Platform
 # Chart: opencti/opencti (https://devops-ia.github.io/helm-opencti/)
+# Chart version: --version 1.4.3   (pin the chart; bump deliberately with the app)
 #
 # Install:
 #   helm repo add opencti https://devops-ia.github.io/helm-opencti/
-#   helm install opencti opencti/opencti -n opencti -f helm-values.yaml
+#   helm install opencti opencti/opencti -n opencti --version 1.4.3 -f helm-values.yaml
 #
 # OpenCTI is the most resource-hungry component. On 16GB Mac Mini, we run
 # slim mode: 1 worker, connectors on-demand, strict memory limits.
+#
+# VERSION CONTRACT: platform, worker, and ALL connectors MUST share the same
+# OpenCTI minor (pycti must match the platform). This file pins 6.9.5 to match
+# the connectors (k8s/opencti/connectors/*.yaml). Upgrade them together.
 
 # --- OpenCTI Platform ---
 opencti:
   replicaCount: 1
+
+  # Pin the platform image (CLAUDE.md: "all images pinned, no :latest").
+  # Tag MUST equal the connector tag (6.9.5).
+  image:
+    repository: opencti/platform
+    tag: "6.9.5"
+    pullPolicy: IfNotPresent
+
   resources:
     requests:
       memory: "1Gi"
@@ -19,14 +32,44 @@ opencti:
       memory: "1536Mi"  # 1.5GB limit
       cpu: "500m"
 
+  # Pod/container hardening — non-root, no privilege escalation, drop all caps,
+  # seccomp RuntimeDefault. Mirrors the (now-deleted) raw manifest posture so the
+  # canonical Helm path stays hardened.
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    fsGroup: 1000
+    seccompProfile:
+      type: RuntimeDefault
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop: ["ALL"]
+
+  # Mount the OpenSearch CA so the platform can verify the TLS-only OpenSearch
+  # endpoint (opensearch-ca-cert ConfigMap, key ca.crt — created in the opencti ns).
+  extraVolumes:
+    - name: opensearch-ca
+      configMap:
+        name: opensearch-ca-cert
+  extraVolumeMounts:
+    - name: opensearch-ca
+      mountPath: /etc/ssl/opensearch
+      readOnly: true
+
   # Application settings
   env:
-    # Admin credentials — password from K8s Secret
+    # Admin credentials — password + token come from K8s Secret via extraEnvs below.
     OPENCTI_ADMIN_EMAIL: "admin@soc.local"
-    OPENCTI_ADMIN_TOKEN: ""  # Auto-generated, retrieve after first boot
 
-    # Shared infrastructure connections
-    ELASTICSEARCH__URL: "http://opensearch-cluster-master.shared.svc.cluster.local:9200"
+    # Shared infrastructure connections.
+    # OpenSearch enforces TLS (plugins.security.ssl.http.enabled: true) so this
+    # MUST be https:// — http:// is rejected. CA is mounted above.
+    ELASTICSEARCH__URL: "https://opensearch-cluster-master.shared.svc.cluster.local:9200"
+    ELASTICSEARCH__USERNAME: "admin"
+    ELASTICSEARCH__SSL__CA_CERTS: "/etc/ssl/opensearch/ca.crt"
+    # Trust the SOC CA for any Node-level TLS the platform performs.
+    NODE_EXTRA_CA_CERTS: "/etc/ssl/opensearch/ca.crt"
     REDIS__HOSTNAME: "redis-master.shared.svc.cluster.local"
     REDIS__PORT: "6379"
     RABBITMQ__HOSTNAME: "rabbitmq.shared.svc.cluster.local"
@@ -48,6 +91,25 @@ opencti:
         secretKeyRef:
           name: soc-opencti-secrets
           key: admin-password
+    # Admin token — REQUIRED. The platform, worker, and every connector must share
+    # this exact token. Injected from the secret (never an empty/auto-generated value),
+    # otherwise the worker/connectors cannot authenticate and ingestion silently breaks.
+    - name: OPENCTI_ADMIN_TOKEN
+      valueFrom:
+        secretKeyRef:
+          name: soc-opencti-secrets
+          key: admin-token
+    # ELASTICSEARCH__PASSWORD = the shared OpenSearch admin password.
+    - name: ELASTICSEARCH__PASSWORD
+      valueFrom:
+        secretKeyRef:
+          name: soc-shared-secrets
+          key: opensearch-password
+    - name: REDIS__PASSWORD
+      valueFrom:
+        secretKeyRef:
+          name: soc-shared-secrets
+          key: redis-password
     - name: RABBITMQ__PASSWORD
       valueFrom:
         secretKeyRef:
@@ -65,10 +127,17 @@ opencti:
           key: health-access-key
 
 # --- Worker ---
-# Workers process ingestion tasks from the RabbitMQ queue
-# On slim config, run only 1 worker (default is 3)
+# Workers process ingestion tasks from the RabbitMQ queue.
+# On slim config, run only 1 worker (default is 3).
 worker:
   replicaCount: 1
+
+  # Pin worker image to the SAME tag as the platform.
+  image:
+    repository: opencti/worker
+    tag: "6.9.5"
+    pullPolicy: IfNotPresent
+
   resources:
     requests:
       memory: "256Mi"
@@ -76,6 +145,16 @@ worker:
     limits:
       memory: "512Mi"
       cpu: "250m"
+
+  # The worker authenticates to the platform with the SAME admin token.
+  # The chart injects opencti.env into the worker for OPENCTI_URL/TOKEN, but make
+  # the token explicit here so platform and worker can never diverge.
+  extraEnvs:
+    - name: OPENCTI_TOKEN
+      valueFrom:
+        secretKeyRef:
+          name: soc-opencti-secrets
+          key: admin-token
 
 # --- Service ---
 service:

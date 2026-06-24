@@ -6,7 +6,9 @@ metadata:
   name: wazuh-custom-decoders
   namespace: wazuh
   labels:
-    app: wazuh-manager
+    app.kubernetes.io/name: wazuh-manager
+    app.kubernetes.io/component: config
+    app.kubernetes.io/part-of: matchbox-soc
 data:
   k8s-decoders.xml: |
     <!-- Kubernetes audit log decoder -->

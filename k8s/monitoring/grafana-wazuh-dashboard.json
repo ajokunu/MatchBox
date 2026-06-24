@@ -3,11 +3,7 @@
   "uid": "wazuh-soc-overview",
   "title": "Wazuh SOC Overview",
   "description": "Security Operations Center overview dashboard for Wazuh alerts",
-  "tags": [
-    "wazuh",
-    "soc",
-    "security"
-  ],
+  "tags": ["wazuh", "soc", "security"],
   "timezone": "browser",
   "schemaVersion": 39,
   "version": 1,
@@ -109,9 +105,7 @@
       "options": {
         "reduceOptions": {
           "values": false,
-          "calcs": [
-            "sum"
-          ],
+          "calcs": ["sum"],
           "fields": ""
         },
         "orientation": "auto",
@@ -195,9 +189,7 @@
       "options": {
         "reduceOptions": {
           "values": false,
-          "calcs": [
-            "sum"
-          ],
+          "calcs": ["sum"],
           "fields": ""
         },
         "orientation": "auto",
@@ -277,9 +269,7 @@
       "options": {
         "reduceOptions": {
           "values": false,
-          "calcs": [
-            "lastNotNull"
-          ],
+          "calcs": ["lastNotNull"],
           "fields": ""
         },
         "orientation": "auto",
@@ -494,9 +484,7 @@
       "options": {
         "reduceOptions": {
           "values": false,
-          "calcs": [
-            "lastNotNull"
-          ],
+          "calcs": ["lastNotNull"],
           "fields": ""
         },
         "orientation": "horizontal",
@@ -585,9 +573,7 @@
       "options": {
         "reduceOptions": {
           "values": false,
-          "calcs": [
-            "lastNotNull"
-          ],
+          "calcs": ["lastNotNull"],
           "fields": ""
         },
         "pieType": "donut",
@@ -599,10 +585,7 @@
           "displayMode": "table",
           "placement": "right",
           "showLegend": true,
-          "values": [
-            "value",
-            "percent"
-          ],
+          "values": ["value", "percent"],
           "calcs": []
         },
         "displayLabels": []
@@ -730,9 +713,7 @@
         "cellHeight": "sm",
         "footer": {
           "show": false,
-          "reducer": [
-            "sum"
-          ],
+          "reducer": ["sum"],
           "countRows": false,
           "fields": ""
         },
@@ -978,9 +959,7 @@
         "cellHeight": "sm",
         "footer": {
           "show": false,
-          "reducer": [
-            "sum"
-          ],
+          "reducer": ["sum"],
           "countRows": false,
           "fields": ""
         },

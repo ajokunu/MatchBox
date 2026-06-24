@@ -33,6 +33,12 @@ spec:
         app.kubernetes.io/name: wazuh-dashboard
     spec:
       automountServiceAccountToken: false
+      # Pod-level hardening baseline (Contract Section 7). The wazuh-dashboard image
+      # runs as the non-root 'wazuh-dashboard' user (uid 1000) for the main container;
+      # apply the default seccomp profile across the pod to reduce syscall surface.
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
       # InitContainer prepares writable directories for the Dashboard.
       # The 4.14.3 image requires:
       # 1. /etc/wazuh-dashboard/ — writable for keystore creation (doesn't exist in image)
@@ -40,14 +46,21 @@ spec:
       initContainers:
         - name: init-dashboard-config
           image: wazuh/wazuh-dashboard:4.14.3
+          imagePullPolicy: IfNotPresent  # version-tagged; avoid re-pull churn
           command: ["sh", "-c"]
           args:
             - |
               mkdir -p /dashboard-init &&
               cp /tmp/dashboard-config/opensearch_dashboards.yml /config-init/opensearch_dashboards.yml &&
               cp -a /usr/share/wazuh-dashboard/config/certs /config-init/certs 2>/dev/null || true
+          # Runs as the image's default non-root dashboard user; the init only copies
+          # config/certs into emptyDir volumes it owns, so root is not required here.
           securityContext:
-            runAsUser: 0
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
           volumeMounts:
             - name: dashboard-etc
               mountPath: /dashboard-init
@@ -58,8 +71,13 @@ spec:
       containers:
         - name: dashboard
           image: wazuh/wazuh-dashboard:4.14.3
+          imagePullPolicy: IfNotPresent
           securityContext:
             allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
           ports:
             - containerPort: 5601
               name: https
@@ -78,19 +96,22 @@ spec:
             - name: INDEXER_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: soc-shared-secrets
-                  key: opensearch-password
-                  optional: true
+                  # wazuh-ns mirror of the OpenSearch admin password (secretKeyRefs
+                  # cannot cross namespaces). Fail closed if absent.
+                  name: soc-wazuh-secrets
+                  key: indexer-password
             - name: WAZUH_API_URL
-              value: "https://wazuh-manager.wazuh.svc.cluster.local"
+              # Use the stable ClusterIP API Service (survives manager pod IP churn).
+              value: "https://wazuh-manager-api.wazuh.svc.cluster.local:55000"
             - name: DASHBOARD_USERNAME
               value: "admin"
             - name: DASHBOARD_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: soc-shared-secrets
-                  key: opensearch-password
-                  optional: true
+                  # wazuh-ns mirror of the OpenSearch admin password (cross-namespace
+                  # secretKeyRefs are not allowed). Fail closed if absent.
+                  name: soc-wazuh-secrets
+                  key: indexer-password
             - name: API_USERNAME
               value: "wazuh-wui"
             - name: API_PASSWORD
@@ -98,7 +119,7 @@ spec:
                 secretKeyRef:
                   name: soc-wazuh-secrets
                   key: wazuh-api-password
-                  optional: true
+                  # Fail closed: missing credential blocks pod start.
           volumeMounts:
             - name: dashboard-etc
               mountPath: /etc/wazuh-dashboard

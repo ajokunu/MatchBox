@@ -1,12 +1,11 @@
-# Wazuh Helm Chart Values — SIEM/XDR Platform
-# Chart: wazuh/wazuh (community Helm chart)
+# Wazuh Helm Chart Values — SIEM/XDR Platform (REFERENCE ONLY)
 #
-# Note: Wazuh's official Helm chart is community-maintained. If unavailable,
-# deploy using the raw manifests in manager/, indexer/, dashboard/ directories.
-#
-# Install:
-#   helm install wazuh ./k8s/wazuh/ -n wazuh -f helm-values.yaml
-#   OR use individual manifests: kubectl apply -f k8s/wazuh/ -n wazuh
+# SOURCE OF TRUTH: Wazuh is deployed via the RAW MANIFESTS in manager/, dashboard/,
+# and agents/ (applied by deploy-stack.sh). This values file is NOT consumed by the
+# deploy flow; it documents the intended shape for a future migration to a real chart.
+# Keep it in sync with the raw manifests to avoid drift, or delete it if the chart
+# path is abandoned. (There is no dedicated indexer/ manifest — the Wazuh indexer is
+# the shared OpenSearch cluster in the `shared` namespace.)
 
 # --- Wazuh Manager ---
 manager:
@@ -21,13 +20,17 @@ manager:
   # Use external OpenSearch (shared namespace)
   indexer:
     url: "https://opensearch-cluster-master.shared.svc.cluster.local:9200"
-  # TheHive integration — forward high-severity alerts
+  # TheHive integration — forward high-severity alerts.
+  # Reconciled to match the raw manifests: the integration is currently DISABLED
+  # (ossec.conf has the <integration> block commented out — the w2thive.py script
+  # is not yet deployed). Flip enabled to true here only when the integration is
+  # actually wired in configmap-ossec.yaml.
   integration:
     thehive:
-      enabled: true
+      enabled: false
       url: "http://thehive.thehive.svc.cluster.local:9000"
       # API key set via Kubernetes Secret
-      alertLevel: 7  # Forward alerts at level 7 and above
+      alertLevel: 7  # Forward alerts at level 7 and above (when enabled)
   # Persistent storage for rules, decoders, and agent keys
   persistence:
     enabled: true

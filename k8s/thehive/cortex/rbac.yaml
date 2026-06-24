@@ -2,6 +2,17 @@
 # Cortex needs to create and manage Jobs in the thehive namespace to run analyzers.
 # Each analyzer runs as a separate K8s Job (one pod per analysis request).
 # Without this RBAC, every Cortex analyzer invocation fails silently.
+#
+# SECURITY: Cortex executes third-party analyzer code against attacker-influenced
+# observables, so a compromised Cortex could abuse this SA to spawn arbitrary Job
+# pods. Two compensating controls bound the blast radius:
+#   1. The thehive namespace enforces Pod Security Standards "restricted"
+#      (k8s/namespaces.yaml), so spawned analyzer Job pods cannot run privileged
+#      or as root.
+#   2. The job-runner egress is constrained by allow-egress-thehive (analyzer pods
+#      can only reach DNS, the shared backends, and internet 443 — not arbitrary
+#      in-cluster/link-local endpoints; see k8s/network-policies.yaml).
+# The SA token is auto-mounted on purpose — Cortex needs it to call the K8s API.
 ---
 apiVersion: v1
 kind: ServiceAccount
@@ -10,6 +21,8 @@ metadata:
   namespace: thehive
   labels:
     app: cortex
+# automountServiceAccountToken stays true (default): Cortex needs the token to
+# create analyzer Jobs via the Kubernetes API. The token is intentionally mounted.
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
